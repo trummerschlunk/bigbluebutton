@@ -25,6 +25,10 @@ const intlMessages = defineMessages({
     id: 'app.submenu.application.audioFilterLabel',
     description: 'audio filters label',
   },
+  bbbaLabel: {
+    id: 'app.submenu.application.bbbaLabel',
+    description: 'bbba label',
+  },
   darkThemeLabel: {
     id: 'app.submenu.application.darkThemeLabel',
     description: 'dark mode label',
