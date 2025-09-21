@@ -318,6 +318,35 @@ class ApplicationMenu extends BaseMenu {
     return audioFilterOption;
   }
 
+  renderBbba() {
+    const { intl, showToggleLabel } = this.props;
+    // UI only, toggleable, but no function yet
+    const [bbbaEnabled, setBbbaEnabled] = React.useState(false);
+
+    return (
+      <Styled.Row>
+        <Styled.Col aria-hidden="true">
+          <Styled.FormElement>
+            <Styled.Label>
+              {intl.formatMessage(intlMessages.bbbaLabel)}
+            </Styled.Label>
+          </Styled.FormElement>
+        </Styled.Col>
+        <Styled.Col>
+          <Styled.FormElementRight>
+            <Toggle
+              icons={false}
+              checked={bbbaEnabled}
+              onChange={() => setBbbaEnabled(!bbbaEnabled)}
+              ariaLabel={intl.formatMessage(intlMessages.bbbaLabel)}
+              showToggleLabel={showToggleLabel}
+            />
+          </Styled.FormElementRight>
+        </Styled.Col>
+      </Styled.Row>
+    );
+  }
+
   renderPaginationToggle() {
     const { paginationToggleEnabled } = this.props;
 
