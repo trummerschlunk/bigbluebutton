@@ -1,6 +1,7 @@
 import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 import logger from '/imports/startup/client/logger';
 import { getStorageSingletonInstance } from '/imports/ui/services/storage';
+import { createWasmProcessorStream, loadWasmProcessor } from '/imports/ui/components/audio/audio-processor/service';
 
 const AUDIO_SESSION_NUM_KEY = 'AudioSessionNumber';
 const DEFAULT_INPUT_DEVICE_ID = '';
@@ -119,9 +120,18 @@ const getAudioConstraints = (constraintFields = {}) => {
 };
 
 const doGUM = async (constraints, retryOnFailure = false) => {
+  let haveWasmProcessor;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    return stream;
+    await loadWasmProcessor();
+    haveWasmProcessor = true;
+  } catch (error) {
+    logger.warn('loadWasmProcessor failed: ' + error);
+    haveWasmProcessor = false;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
   } catch (error) {
     // This is probably a deviceId mismatch. Retry with base constraints
     // without an exact deviceId.
@@ -137,11 +147,23 @@ const doGUM = async (constraints, retryOnFailure = false) => {
         },
       }, 'Audio getUserMedia returned OverconstrainedError, rollback');
 
-      return navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } else {
+      // Not OverconstrainedError - bubble up the error.
+      throw error;
     }
+  }
 
-    // Not OverconstrainedError - bubble up the error.
-    throw error;
+  if (!haveWasmProcessor) {
+    return stream;
+  }
+
+  try {
+    logger.info('wasm process starting...');
+    return createWasmProcessorStream(stream);
+  } catch (error) {
+    logger.warn('createWasmProcessorStream failed: ' + error);
+    return stream;
   }
 };
 
