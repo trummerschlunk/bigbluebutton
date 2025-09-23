@@ -218,8 +218,8 @@ class ApplicationMenu extends BaseMenu {
     const _audioFilterEnabled = !ApplicationMenu.isAudioFilterEnabled(this
       .state.settings.microphoneConstraints);
     const _newConstraints = {
-      autoGainControl: _audioFilterEnabled,
-      echoCancellation: _audioFilterEnabled,
+      autoGainControl: false,
+      echoCancellation: true,
       noiseSuppression: _audioFilterEnabled,
     };
 

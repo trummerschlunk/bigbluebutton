@@ -555,7 +555,7 @@
     "app.submenu.application.applicationSectionTitle": "Application",
     "app.submenu.application.pushToTalkLabel": "Audio push to talk",
     "app.submenu.application.animationsLabel": "Animations",
-    "app.submenu.application.audioFilterLabel": "Audio Filters for Microphone",
+    "app.submenu.application.audioFilterLabel": "Audio Filters for Microphone (Standard)",
     "app.submenu.application.bbbaLabel": "BigBlueBetterAudio",
     "app.submenu.application.wbToolbarsAutoHideLabel": "Auto Hide Whiteboard Toolbars",
     "app.submenu.application.darkThemeLabel": "Dark mode",
