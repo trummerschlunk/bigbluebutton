@@ -48,7 +48,7 @@ const cleanupDelayNode = () => {
 
 const addDelayNode = (stream) => {
   const {
-    delayTime = 2.0,
+    delayTime = 2.0,  // was 0.5 but changing it does not affect the audio!!
     maxDelayTime = 2.0,
   } = window.meetingClientSettings.public.media.localEchoTest.delay;
 
@@ -69,8 +69,9 @@ const addDelayNode = (stream) => {
     delayNode = new DelayNode(audioContext, { delayTime, maxDelayTime });
     // Connect the stream to the DelayNode and then to the MediaStreamDestinationNode
     // to be able to play the stream.
-    sourceContext.connect(delayNode);
-    delayNode.connect(contextDestination);
+    //sourceContext.connect(delayNode);  // disabled by Klaus
+    //delayNode.connect(contextDestination);   // disableb by Klaus
+    sourceContext.connect(contextDestination);   // enabled by Klaus to avoid delay
     delayNode.delayTime.setValueAtTime(delayTime, audioContext.currentTime);
     // Play the stream with the delay in the default audio element (local-media)
     audioElement.srcObject = contextDestination.stream;
