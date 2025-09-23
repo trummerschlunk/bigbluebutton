@@ -48,8 +48,8 @@ const cleanupDelayNode = () => {
 
 const addDelayNode = (stream) => {
   const {
-    delayTime = 0.0,
-    maxDelayTime = 2,
+    delayTime = 0.01,
+    maxDelayTime = 1,
   } = window.meetingClientSettings.public.media.localEchoTest.delay;
 
   if (stream) {
