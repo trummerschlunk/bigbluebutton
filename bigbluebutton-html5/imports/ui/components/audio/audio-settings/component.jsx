@@ -124,6 +124,11 @@ const intlMessages = defineMessages({
     description: 'Noise Suppression toggle label',
     defaultMessage: 'Noise Suppression',
   },
+  applyFiltersLabel: {
+    id: 'app.audio.audioSettings.applyFiltersLabel',
+    description: 'Apply audio filter constraints without closing',
+    defaultMessage: 'Apply Filters',
+  },
 });
 
 class AudioSettings extends React.Component {
@@ -143,6 +148,7 @@ class AudioSettings extends React.Component {
     this.handleCancelClick = this.handleCancelClick.bind(this);
     this.unmuteOnExit = this.unmuteOnExit.bind(this);
     this.updateDeviceList = this.updateDeviceList.bind(this);
+    this.handleApplyFiltersClick = this.handleApplyFiltersClick.bind(this);
 
     // Helper to coerce constraint values to booleans (mirrors app menu logic)
     const toBool = (v) => {
@@ -287,14 +293,18 @@ class AudioSettings extends React.Component {
     return null;
   }
 
-  // Soft-apply current toggle states to the live mic track
+  // Soft-apply current toggle states to the preview/live mic track
   async applyMicConstraintsFromToggles() {
     try {
-      const track = this.getLocalMicTrack();
-      if (!track || typeof track.applyConstraints !== 'function') return;
+      // Prefer the preview stream used in this dialog
+      const previewTrack = this.state?.stream?.getAudioTracks?.()[0];
+
+      // Fallback to the live mic track used by the app
+      const liveTrack = previewTrack || this.getLocalMicTrack();
+      if (!liveTrack || typeof liveTrack.applyConstraints !== 'function') return;
 
       const { agcEnabled, echoEnabled, noiseEnabled } = this.state;
-      await track.applyConstraints({
+      await liveTrack.applyConstraints({
         autoGainControl: !!agcEnabled,
         echoCancellation: !!echoEnabled,
         noiseSuppression: !!noiseEnabled,
@@ -303,6 +313,10 @@ class AudioSettings extends React.Component {
       // eslint-disable-next-line no-console
       console.warn('AudioSettings: applyConstraints failed', err);
     }
+  }
+
+  async handleApplyFiltersClick() {
+    await this.applyMicConstraintsFromToggles();
   }
 
   handleConfirmationClick() {
@@ -734,6 +748,14 @@ class AudioSettings extends React.Component {
             color="secondary"
             onClick={this.handleCancelClick}
             disabled={isConnecting}
+          />
+          <Button
+            data-test="applyAudioFiltersButton"
+            size="md"
+            color="secondary"
+            label={intl.formatMessage(intlMessages.applyFiltersLabel)}
+            onClick={this.handleApplyFiltersClick}
+            disabled={isConnecting || producingStreams}
           />
           <Button
             data-test="joinEchoTestButton"
