@@ -214,65 +214,6 @@ class ApplicationMenu extends BaseMenu {
     return isAnyFilterEnabled;
   }
 
-  // Added helpers to read/toggle individual constraints
-  static isConstraintEnabledValue(constraintValue) {
-    switch (typeof constraintValue) {
-      case 'boolean':
-        return constraintValue;
-      case 'string':
-        return constraintValue === 'true';
-      case 'object':
-        return !!(constraintValue?.exact || constraintValue?.ideal);
-      default:
-        return false;
-    }
-  }
-
-  static getConstraintEnabled(constraintsObj, key) {
-    if (!constraintsObj || typeof constraintsObj !== 'object') return true;
-    if (typeof constraintsObj[key] === 'undefined') return true;
-    return ApplicationMenu.isConstraintEnabledValue(constraintsObj[key]);
-  }
-
-  handleAudioConstraintChange(constraintKey) {
-    const currentConstraints = this.state.settings.microphoneConstraints || {};
-
-    // Read current on/off states
-    const agcEnabled = ApplicationMenu.getConstraintEnabled(currentConstraints, 'autoGainControl');
-    const ecEnabled = ApplicationMenu.getConstraintEnabled(currentConstraints, 'echoCancellation');
-    const nsEnabled = ApplicationMenu.getConstraintEnabled(currentConstraints, 'noiseSuppression');
-
-    // Toggle the requested one
-    let newAgc = agcEnabled;
-    let newEc = ecEnabled;
-    let newNs = nsEnabled;
-
-    switch (constraintKey) {
-      case 'autoGainControl':
-        newAgc = !agcEnabled;
-        break;
-      case 'echoCancellation':
-        newEc = !ecEnabled;
-        break;
-      case 'noiseSuppression':
-        newNs = !nsEnabled;
-        break;
-      default:
-        break;
-    }
-
-    // Write all three back so the constraints object is complete and consistent
-    const newConstraints = {
-      autoGainControl: newAgc,
-      echoCancellation: newEc,
-      noiseSuppression: newNs,
-    };
-
-    const obj = this.state;
-    obj.settings.microphoneConstraints = newConstraints;
-    this.handleUpdateSettings(this.state.settingsName, obj.settings);
-  }
-
   handleAudioFilterChange() {
     const _audioFilterEnabled = !ApplicationMenu.isAudioFilterEnabled(this
       .state.settings.microphoneConstraints);
@@ -346,83 +287,31 @@ class ApplicationMenu extends BaseMenu {
     if (SHOW_AUDIO_FILTERS) {
       const { intl, showToggleLabel, displaySettingsStatus } = this.props;
       const { settings } = this.state;
-
-      const mc = settings.microphoneConstraints || {};
-      const agcEnabled = ApplicationMenu.getConstraintEnabled(mc, 'autoGainControl');
-      const ecEnabled = ApplicationMenu.getConstraintEnabled(mc, 'echoCancellation');
-      const nsEnabled = ApplicationMenu.getConstraintEnabled(mc, 'noiseSuppression');
+      const audioFilterStatus = ApplicationMenu
+        .isAudioFilterEnabled(settings.microphoneConstraints);
 
       audioFilterOption = (
-        <>
-          {/* Auto Gain Control */}
-          <Styled.Row>
-            <Styled.Col aria-hidden="true">
-              <Styled.FormElement>
-                <Styled.Label>
-                  {`${intl.formatMessage(intlMessages.audioFilterLabel)}: Auto Gain Control`}
-                </Styled.Label>
-              </Styled.FormElement>
-            </Styled.Col>
-            <Styled.Col>
-              <Styled.FormElementRight>
-                {displaySettingsStatus(agcEnabled)}
-                <Toggle
-                  icons={false}
-                  defaultChecked={agcEnabled}
-                  onChange={() => this.handleAudioConstraintChange('autoGainControl')}
-                  ariaLabel={`${intl.formatMessage(intlMessages.audioFilterLabel)} - Auto Gain Control - ${displaySettingsStatus(agcEnabled, true)}`}
-                  showToggleLabel={showToggleLabel}
-                />
-              </Styled.FormElementRight>
-            </Styled.Col>
-          </Styled.Row>
-
-          {/* Echo Cancellation */}
-          <Styled.Row>
-            <Styled.Col aria-hidden="true">
-              <Styled.FormElement>
-                <Styled.Label>
-                  {`${intl.formatMessage(intlMessages.audioFilterLabel)}: Echo Cancellation`}
-                </Styled.Label>
-              </Styled.FormElement>
-            </Styled.Col>
-            <Styled.Col>
-              <Styled.FormElementRight>
-                {displaySettingsStatus(ecEnabled)}
-                <Toggle
-                  icons={false}
-                  defaultChecked={ecEnabled}
-                  onChange={() => this.handleAudioConstraintChange('echoCancellation')}
-                  ariaLabel={`${intl.formatMessage(intlMessages.audioFilterLabel)} - Echo Cancellation - ${displaySettingsStatus(ecEnabled, true)}`}
-                  showToggleLabel={showToggleLabel}
-                />
-              </Styled.FormElementRight>
-            </Styled.Col>
-          </Styled.Row>
-
-          {/* Noise Suppression */}
-          <Styled.Row>
-            <Styled.Col aria-hidden="true">
-              <Styled.FormElement>
-                <Styled.Label>
-                  {`${intl.formatMessage(intlMessages.audioFilterLabel)}: Noise Suppression`}
-                </Styled.Label>
-              </Styled.FormElement>
-            </Styled.Col>
-            <Styled.Col>
-              <Styled.FormElementRight>
-                {displaySettingsStatus(nsEnabled)}
-                <Toggle
-                  icons={false}
-                  defaultChecked={nsEnabled}
-                  onChange={() => this.handleAudioConstraintChange('noiseSuppression')}
-                  ariaLabel={`${intl.formatMessage(intlMessages.audioFilterLabel)} - Noise Suppression - ${displaySettingsStatus(nsEnabled, true)}`}
-                  showToggleLabel={showToggleLabel}
-                />
-              </Styled.FormElementRight>
-            </Styled.Col>
-          </Styled.Row>
-        </>
+        <Styled.Row>
+          <Styled.Col aria-hidden="true">
+            <Styled.FormElement>
+              <Styled.Label>
+                {intl.formatMessage(intlMessages.audioFilterLabel)}
+              </Styled.Label>
+            </Styled.FormElement>
+          </Styled.Col>
+          <Styled.Col>
+            <Styled.FormElementRight>
+              {displaySettingsStatus(audioFilterStatus)}
+              <Toggle
+                icons={false}
+                defaultChecked={this.state.audioFilterEnabled}
+                onChange={() => this.handleAudioFilterChange()}
+                ariaLabel={`${intl.formatMessage(intlMessages.audioFilterLabel)} - ${displaySettingsStatus(audioFilterStatus, true)}`}
+                showToggleLabel={showToggleLabel}
+              />
+            </Styled.FormElementRight>
+          </Styled.Col>
+        </Styled.Row>
       );
     }
 
@@ -556,63 +445,6 @@ class ApplicationMenu extends BaseMenu {
         </Styled.Col>
       </Styled.Row>
     );
-  }
-
-  // Best-effort: try to find the current local microphone track
-  getLocalMicTrack() {
-    try {
-      // Prefer an app-level audio manager if present
-      if (window?.bbbAudioManager?.getLocalMicTrack) {
-        const t = window.bbbAudioManager.getLocalMicTrack();
-        if (t) return t;
-      }
-      if (window?.bbbAudioManager?.getLocalMicStream) {
-        const s = window.bbbAudioManager.getLocalMicStream();
-        const t = s && s.getAudioTracks && s.getAudioTracks()[0];
-        if (t) return t;
-      }
-
-      // Common fallbacks used in some BBB setups
-      const candidates = [
-        window?.voice?.localStream,
-        window?.bbb?.audio?.localStream,
-        window?.BBB?.webrtc?.microphoneStream,
-      ].filter(Boolean);
-
-      for (const s of candidates) {
-        const t = s?.getAudioTracks?.()[0];
-        if (t) return t;
-      }
-    } catch (e) {
-      // no-op
-    }
-    return null;
-  }
-
-  // Option A: applyConstraints on the live mic track using saved settings
-  async applyMicConstraintsOptionA() {
-    try {
-      const track = this.getLocalMicTrack();
-      if (!track || typeof track.applyConstraints !== 'function') return;
-
-      // Prefer the persisted Settings; fall back to local state
-      const Settings = getSettingsSingletonInstance();
-      const mc = (Settings?.application?.microphoneConstraints)
-        || this.state?.settings?.microphoneConstraints
-        || {};
-
-      const constraints = {
-        autoGainControl: !!mc.autoGainControl,
-        echoCancellation: !!mc.echoCancellation,
-        noiseSuppression: !!mc.noiseSuppression,
-      };
-
-      await track.applyConstraints(constraints);
-    } catch (err) {
-      // Swallow errors to avoid breaking Save flow; log for diagnostics
-      // eslint-disable-next-line no-console
-      console.warn('applyConstraints failed (Option A):', err);
-    }
   }
 
   render() {
