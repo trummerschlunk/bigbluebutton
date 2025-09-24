@@ -199,6 +199,54 @@ class Settings extends Component {
     );
   }
 
+  // Find the current local microphone track
+  getLocalMicTrack() {
+    try {
+      if (window?.bbbAudioManager?.getLocalMicTrack) {
+        const t = window.bbbAudioManager.getLocalMicTrack();
+        if (t) return t;
+      }
+      if (window?.bbbAudioManager?.getLocalMicStream) {
+        const s = window.bbbAudioManager.getLocalMicStream();
+        const t = s && s.getAudioTracks && s.getAudioTracks()[0];
+        if (t) return t;
+      }
+
+      const candidates = [
+        window?.voice?.localStream,
+        window?.bbb?.audio?.localStream,
+        window?.BBB?.webrtc?.microphoneStream,
+      ].filter(Boolean);
+
+      for (const s of candidates) {
+        const t = s?.getAudioTracks?.()[0];
+        if (t) return t;
+      }
+    } catch (e) {
+      // no-op
+    }
+    return null;
+  }
+
+  // Apply constraints to the live mic track (soft apply)
+  async applyMicConstraintsOptionA(mc) {
+    try {
+      const track = this.getLocalMicTrack();
+      if (!track || typeof track.applyConstraints !== 'function') return;
+
+      const constraints = {
+        autoGainControl: !!mc?.autoGainControl,
+        echoCancellation: !!mc?.echoCancellation,
+        noiseSuppression: !!mc?.noiseSuppression,
+      };
+
+      await track.applyConstraints(constraints);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('applyConstraints failed (Option A):', err);
+    }
+  }
+
   renderModalContent() {
     const {
       intl,
@@ -337,7 +385,7 @@ class Settings extends Component {
       <ModalFullscreen
         title={intl.formatMessage(intlMessages.SettingsLabel)}
         confirm={{
-          callback: () => {
+          callback: async () => {
             this.updateSettings(current, intlMessages.savedAlertLabel, setLocalSettings);
 
             if (saved.application.locale !== current.application.locale) {
@@ -346,6 +394,9 @@ class Settings extends Component {
               setUseCurrentLocale(newLanguage);
               document.body.classList.remove(`lang-${language}`);
             }
+
+            // Soft-apply updated microphone constraints to the live mic track
+            await this.applyMicConstraintsOptionA(current.application.microphoneConstraints);
 
             /* We need to use setIsOpen(false) here to prevent submenu state updates,
             *  from re-opening the modal.
