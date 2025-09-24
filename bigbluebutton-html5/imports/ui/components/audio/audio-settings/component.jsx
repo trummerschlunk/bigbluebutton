@@ -13,7 +13,6 @@ import { hasMediaDevicesEventTarget } from '/imports/ui/services/webrtc-base/uti
 import AudioManager from '/imports/ui/services/audio-manager';
 import Session from '/imports/ui/services/storage/in-memory';
 import AudioCaptionsSelectContainer from '../audio-graphql/audio-captions/captions/component';
-import Toggle from '/imports/ui/components/common/switch/component';
 
 const propTypes = {
   intl: PropTypes.shape({
@@ -128,7 +127,6 @@ class AudioSettings extends React.Component {
     this.handleCancelClick = this.handleCancelClick.bind(this);
     this.unmuteOnExit = this.unmuteOnExit.bind(this);
     this.updateDeviceList = this.updateDeviceList.bind(this);
-    this.handleAudioFilterChange = this.handleAudioFilterChange.bind(this);
 
     this.state = {
       inputDeviceId,
@@ -141,7 +139,6 @@ class AudioSettings extends React.Component {
       audioInputDevices: [],
       audioOutputDevices: [],
       findingDevices: permissionStatus === 'prompt' || permissionStatus === 'denied',
-      audioFilterEnabled: ApplicationMenu.isAudioFilterEnabled(props.microphoneConstraints),
     };
 
     this._isMounted = false;
@@ -563,24 +560,6 @@ class AudioSettings extends React.Component {
     );
   }
 
-  renderAudioFilters() {
-    const { intl } = this.props;
-    const { audioFilterEnabled } = this.state;
-    return (
-      <Styled.FormElement>
-        <Styled.LabelSmall>
-          {intl.formatMessage({ id: 'app.submenu.application.audioFilterLabel' })}
-        </Styled.LabelSmall>
-        <Toggle
-          icons={false}
-          defaultChecked={audioFilterEnabled}
-          onChange={this.handleAudioFilterChange}
-          ariaLabel={intl.formatMessage({ id: 'app.submenu.application.audioFilterLabel' })}
-        />
-      </Styled.FormElement>
-    );
-  }
-
   renderAudioNote() {
     const {
       animations,
@@ -619,7 +598,6 @@ class AudioSettings extends React.Component {
         {this.renderAudioNote()}
         <Styled.Form>
           {this.renderDeviceSelectors()}
-          {this.renderAudioFilters()}
         </Styled.Form>
         <Styled.BottomSeparator />
         <Styled.EnterAudio>
