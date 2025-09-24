@@ -108,7 +108,7 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
             return;
         }
 
-        for (let instance in this.instances) {
+        for (let instance of this.instances) {
             this.module._mapi_set_parameter(instance.handle, data.index, data.value);
         }
     }
@@ -127,7 +127,7 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
             return false;
         }
 
-        for (var i = 0; i < this.numIO; ++i) {
+        for (let i = 0; i < this.numIO; ++i) {
             this.instances[i].process(input, output, i);
         }
 
