@@ -129,6 +129,31 @@ const intlMessages = defineMessages({
     description: 'Apply audio filter constraints without closing',
     defaultMessage: 'Apply Filters',
   },
+  webrtcConstraintsSectionLabel: {
+    id: 'app.audio.audioSettings.webrtcConstraintsSectionLabel',
+    description: 'Section label for WebRTC audio constraints toggles',
+    defaultMessage: 'Browser Audio Effects',
+  },
+  bbbaSectionLabel: {
+    id: 'app.audio.audioSettings.bbbaSectionLabel',
+    description: 'Section label for BigBlueBetterAudio',
+    defaultMessage: 'BigBlueBetterAudio',
+  },
+  bbbaGlobalBypassLabel: {
+    id: 'app.audio.audioSettings.bbbaGlobalBypass',
+    description: 'Toggle label for BBBA global bypass',
+    defaultMessage: 'Global bypass',
+  },
+  bbbaLevelerBypassLabel: {
+    id: 'app.audio.audioSettings.bbbaLevelerBypass',
+    description: 'Toggle label for BBBA leveler bypass',
+    defaultMessage: 'Leveler bypass',
+  },
+  bbbaTargetLoudnessLabel: {
+    id: 'app.audio.audioSettings.bbbaTargetLoudness',
+    description: 'Slider label for BBBA target loudness',
+    defaultMessage: 'Target loudness',
+  },
 });
 
 class AudioSettings extends React.Component {
@@ -181,6 +206,10 @@ class AudioSettings extends React.Component {
       agcEnabled: agc,
       echoEnabled: echo,
       noiseEnabled: noise,
+      // BBBA toggles (UI only, no external effect yet)
+      bbbaGlobalBypass: false,
+      bbbaLevelerBypass: false,
+      bbbaTargetLoudness: -23, // UI only, no external effect yet
     };
 
     this._isMounted = false;
@@ -582,10 +611,28 @@ class AudioSettings extends React.Component {
 
   renderAudioFilters() {
     const { intl } = this.props;
-    const { agcEnabled, echoEnabled, noiseEnabled } = this.state;
+    const {
+      agcEnabled,
+      echoEnabled,
+      noiseEnabled,
+      bbbaGlobalBypass,
+      bbbaLevelerBypass,
+      bbbaTargetLoudness,
+    } = this.state;
 
     return (
       <>
+        {/* Separator before the constraints section */}
+        <Styled.BottomSeparator />
+
+        {/* Section label under separator, left-aligned */}
+        <Styled.FormElement>
+          <Styled.LabelSmallFullWidth>
+            {intl.formatMessage(intlMessages.webrtcConstraintsSectionLabel)}
+          </Styled.LabelSmallFullWidth>
+        </Styled.FormElement>
+
+        {/* Auto Gain Control */}
         <Styled.FormElement>
           <Styled.LabelSmall htmlFor="toggleAgc">
             {intl.formatMessage(intlMessages.filterAgcLabel)}
@@ -599,6 +646,7 @@ class AudioSettings extends React.Component {
           />
         </Styled.FormElement>
 
+        {/* Echo Cancellation */}
         <Styled.FormElement>
           <Styled.LabelSmall htmlFor="toggleEcho">
             {intl.formatMessage(intlMessages.filterEchoLabel)}
@@ -612,6 +660,7 @@ class AudioSettings extends React.Component {
           />
         </Styled.FormElement>
 
+        {/* Noise Suppression */}
         <Styled.FormElement>
           <Styled.LabelSmall htmlFor="toggleNoise">
             {intl.formatMessage(intlMessages.filterNoiseLabel)}
@@ -622,6 +671,61 @@ class AudioSettings extends React.Component {
             checked={noiseEnabled}
             onChange={() => this.setState({ noiseEnabled: !noiseEnabled })}
             ariaLabel={intl.formatMessage(intlMessages.filterNoiseLabel)}
+          />
+        </Styled.FormElement>
+
+        {/* Separator before BBBA section */}
+        <Styled.BottomSeparator />
+
+        {/* BBBA section label */}
+        <Styled.FormElement>
+          <Styled.LabelSmallFullWidth>
+            {intl.formatMessage(intlMessages.bbbaSectionLabel)}
+          </Styled.LabelSmallFullWidth>
+        </Styled.FormElement>
+
+        {/* BBBA Global bypass */}
+        <Styled.FormElement>
+          <Styled.LabelSmall htmlFor="toggleBbbaGlobalBypass">
+            {intl.formatMessage(intlMessages.bbbaGlobalBypassLabel)}
+          </Styled.LabelSmall>
+          <Toggle
+            id="toggleBbbaGlobalBypass"
+            icons={false}
+            checked={bbbaGlobalBypass}
+            onChange={() => this.setState({ bbbaGlobalBypass: !bbbaGlobalBypass })}
+            ariaLabel={intl.formatMessage(intlMessages.bbbaGlobalBypassLabel)}
+          />
+        </Styled.FormElement>
+
+        {/* BBBA Leveler bypass */}
+        <Styled.FormElement>
+          <Styled.LabelSmall htmlFor="toggleBbbaLevelerBypass">
+            {intl.formatMessage(intlMessages.bbbaLevelerBypassLabel)}
+          </Styled.LabelSmall>
+          <Toggle
+            id="toggleBbbaLevelerBypass"
+            icons={false}
+            checked={bbbaLevelerBypass}
+            onChange={() => this.setState({ bbbaLevelerBypass: !bbbaLevelerBypass })}
+            ariaLabel={intl.formatMessage(intlMessages.bbbaLevelerBypassLabel)}
+          />
+        </Styled.FormElement>
+
+        {/* BBBA Target Loudness slider (no function yet) */}
+        <Styled.FormElement>
+          <Styled.LabelSmall htmlFor="sliderBbbaTargetLoudness">
+            {intl.formatMessage(intlMessages.bbbaTargetLoudnessLabel)}: {bbbaTargetLoudness} dB
+          </Styled.LabelSmall>
+          <input
+            id="sliderBbbaTargetLoudness"
+            type="range"
+            min={-30}
+            max={-15}
+            step={1}
+            value={bbbaTargetLoudness}
+            onChange={(e) => this.setState({ bbbaTargetLoudness: Number(e.target.value) })}
+            aria-label={intl.formatMessage(intlMessages.bbbaTargetLoudnessLabel)}
           />
         </Styled.FormElement>
       </>
