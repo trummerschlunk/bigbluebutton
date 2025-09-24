@@ -7,6 +7,12 @@ let workletLoaded = false;
 // global audio context needed for worklet
 let audioContext = null;
 
+// global function for testing purposes
+let audioProcessorForTesting = null; // TESTING global access, remove this later
+window.set_wasm_param = function(index, value) {
+    audioProcessorForTesting.port.postMessage({type: 'param', index: index, value: value});
+}
+
 // create an audio processor on top of a stream, returns a processed stream
 const createWasmProcessorStream = (stream) => {
     const sourceContext = audioContext.createMediaStreamSource(stream);
@@ -26,6 +32,8 @@ const createWasmProcessorStream = (stream) => {
 
     sourceContext.connect(audioProcessor);
     audioProcessor.connect(contextDestination);
+
+    audioProcessorForTesting = audioProcessor;
 
     console.log("---------------------------------------------------------------- createWasmProcessorStream ok!");
     return contextDestination.stream;
