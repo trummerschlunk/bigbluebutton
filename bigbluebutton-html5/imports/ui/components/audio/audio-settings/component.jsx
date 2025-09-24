@@ -13,6 +13,7 @@ import { hasMediaDevicesEventTarget } from '/imports/ui/services/webrtc-base/uti
 import AudioManager from '/imports/ui/services/audio-manager';
 import Session from '/imports/ui/services/storage/in-memory';
 import AudioCaptionsSelectContainer from '../audio-graphql/audio-captions/captions/component';
+import Toggle from '/imports/ui/components/common/switch/component';
 
 const propTypes = {
   intl: PropTypes.shape({
@@ -108,6 +109,21 @@ const intlMessages = defineMessages({
     id: 'app.audio.audioSettings.baseSubtitle',
     description: 'Base subtitle for audio settings',
   },
+  filterAgcLabel: {
+    id: 'app.audio.audioSettings.filterAgc',
+    description: 'Auto Gain Control toggle label',
+    defaultMessage: 'Auto Gain Control',
+  },
+  filterEchoLabel: {
+    id: 'app.audio.audioSettings.filterEcho',
+    description: 'Echo Cancellation toggle label',
+    defaultMessage: 'Echo Cancellation',
+  },
+  filterNoiseLabel: {
+    id: 'app.audio.audioSettings.filterNoise',
+    description: 'Noise Suppression toggle label',
+    defaultMessage: 'Noise Suppression',
+  },
 });
 
 class AudioSettings extends React.Component {
@@ -128,6 +144,22 @@ class AudioSettings extends React.Component {
     this.unmuteOnExit = this.unmuteOnExit.bind(this);
     this.updateDeviceList = this.updateDeviceList.bind(this);
 
+    // Helper to coerce constraint values to booleans (mirrors app menu logic)
+    const toBool = (v) => {
+      switch (typeof v) {
+        case 'boolean': return v;
+        case 'string': return v === 'true';
+        case 'object': return !!(v && (v.exact || v.ideal));
+        default: return true; // default on if undefined
+      }
+    };
+
+    // Initialize toggle states from current audio constraints
+    const baseConstraints = props.getAudioConstraints({ deviceId: props.inputDeviceId }) || {};
+    const agc = toBool(baseConstraints.autoGainControl);
+    const echo = toBool(baseConstraints.echoCancellation);
+    const noise = toBool(baseConstraints.noiseSuppression);
+
     this.state = {
       inputDeviceId,
       outputDeviceId,
@@ -139,6 +171,10 @@ class AudioSettings extends React.Component {
       audioInputDevices: [],
       audioOutputDevices: [],
       findingDevices: permissionStatus === 'prompt' || permissionStatus === 'denied',
+      // Audio filter toggles
+      agcEnabled: agc,
+      echoEnabled: echo,
+      noiseEnabled: noise,
     };
 
     this._isMounted = false;
@@ -224,6 +260,51 @@ class AudioSettings extends React.Component {
     this.setOutputDevice(deviceId);
   }
 
+  // Try to get the current local microphone MediaStreamTrack
+  getLocalMicTrack() {
+    try {
+      if (window?.bbbAudioManager?.getLocalMicTrack) {
+        const t = window.bbbAudioManager.getLocalMicTrack();
+        if (t) return t;
+      }
+      if (window?.bbbAudioManager?.getLocalMicStream) {
+        const s = window.bbbAudioManager.getLocalMicStream();
+        const t = s && s.getAudioTracks && s.getAudioTracks()[0];
+        if (t) return t;
+      }
+      const candidates = [
+        window?.voice?.localStream,
+        window?.bbb?.audio?.localStream,
+        window?.BBB?.webrtc?.microphoneStream,
+      ].filter(Boolean);
+      for (const s of candidates) {
+        const t = s?.getAudioTracks?.()[0];
+        if (t) return t;
+      }
+    } catch (e) {
+      // no-op
+    }
+    return null;
+  }
+
+  // Soft-apply current toggle states to the live mic track
+  async applyMicConstraintsFromToggles() {
+    try {
+      const track = this.getLocalMicTrack();
+      if (!track || typeof track.applyConstraints !== 'function') return;
+
+      const { agcEnabled, echoEnabled, noiseEnabled } = this.state;
+      await track.applyConstraints({
+        autoGainControl: !!agcEnabled,
+        echoCancellation: !!echoEnabled,
+        noiseSuppression: !!noiseEnabled,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('AudioSettings: applyConstraints failed', err);
+    }
+  }
+
   handleConfirmationClick() {
     const { stream, inputDeviceId: selectedInputDeviceId } = this.state;
     const {
@@ -233,22 +314,18 @@ class AudioSettings extends React.Component {
       liveChangeInputDevice,
     } = this.props;
 
-    const confirm = () => {
+    const confirm = async () => {
+      // Apply the toggles to the live mic (acts as Save in this dialog)
+      await this.applyMicConstraintsFromToggles();
+
       // Stream generation disabled or there isn't any stream: just run the provided callback
       if (!produceStreams || !stream) return handleConfirmation();
 
-      // Stream generation enabled and there is a valid input stream => call
-      // the confirmation callback with the input stream as arg so it can be used
-      // in upstream components. The rationale is no surplus gUM calls.
-      // We're cloning it because the original will be cleaned up on unmount here.
       const clonedStream = stream.clone();
-
       return handleConfirmation(clonedStream);
     };
 
     if (isConnected) {
-      // If connected, we need to use the in-call device change method so that all
-      // components pick up the change and the peer is properly updated.
       liveChangeInputDevice(selectedInputDeviceId).catch((error) => {
         logger.warn({
           logCode: 'audiosettings_live_change_device_failed',
@@ -489,6 +566,54 @@ class AudioSettings extends React.Component {
     );
   }
 
+  renderAudioFilters() {
+    const { intl } = this.props;
+    const { agcEnabled, echoEnabled, noiseEnabled } = this.state;
+
+    return (
+      <>
+        <Styled.FormElement>
+          <Styled.LabelSmall htmlFor="toggleAgc">
+            {intl.formatMessage(intlMessages.filterAgcLabel)}
+          </Styled.LabelSmall>
+          <Toggle
+            id="toggleAgc"
+            icons={false}
+            checked={agcEnabled}
+            onChange={() => this.setState({ agcEnabled: !agcEnabled })}
+            ariaLabel={intl.formatMessage(intlMessages.filterAgcLabel)}
+          />
+        </Styled.FormElement>
+
+        <Styled.FormElement>
+          <Styled.LabelSmall htmlFor="toggleEcho">
+            {intl.formatMessage(intlMessages.filterEchoLabel)}
+          </Styled.LabelSmall>
+          <Toggle
+            id="toggleEcho"
+            icons={false}
+            checked={echoEnabled}
+            onChange={() => this.setState({ echoEnabled: !echoEnabled })}
+            ariaLabel={intl.formatMessage(intlMessages.filterEchoLabel)}
+          />
+        </Styled.FormElement>
+
+        <Styled.FormElement>
+          <Styled.LabelSmall htmlFor="toggleNoise">
+            {intl.formatMessage(intlMessages.filterNoiseLabel)}
+          </Styled.LabelSmall>
+          <Toggle
+            id="toggleNoise"
+            icons={false}
+            checked={noiseEnabled}
+            onChange={() => this.setState({ noiseEnabled: !noiseEnabled })}
+            ariaLabel={intl.formatMessage(intlMessages.filterNoiseLabel)}
+          />
+        </Styled.FormElement>
+      </>
+    );
+  }
+
   renderDeviceSelectors() {
     const {
       inputDeviceId,
@@ -598,6 +723,7 @@ class AudioSettings extends React.Component {
         {this.renderAudioNote()}
         <Styled.Form>
           {this.renderDeviceSelectors()}
+          {this.renderAudioFilters()}
         </Styled.Form>
         <Styled.BottomSeparator />
         <Styled.EnterAudio>
