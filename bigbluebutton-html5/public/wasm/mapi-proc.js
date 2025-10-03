@@ -108,8 +108,8 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
             return;
         }
 
-        for (let instance in this.instances) {
-            this.module._mapi_set_parameter(instance.handle, data.index, data.value);
+        for (let i = 0; i < this.numIO; ++i) {
+            this.module._mapi_set_parameter(this.instances[i].handle, data.index, data.value);
         }
     }
 
