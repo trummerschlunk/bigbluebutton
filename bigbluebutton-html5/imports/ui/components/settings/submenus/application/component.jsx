@@ -24,6 +24,26 @@ const intlMessages = defineMessages({
     id: 'app.submenu.application.audioFilterLabel',
     description: 'audio filters label',
   },
+  autoGainControl: {
+    id: 'app.submenu.application.autoGainControl',
+    description: 'audio wasm label',
+    defaultMessage: 'Enable Auto-Gain Control',
+  },
+  echoCancellation: {
+    id: 'app.submenu.application.echoCancellation',
+    description: 'audio wasm label',
+    defaultMessage: 'Enable Echo Cancellation',
+  },
+  noiseSuppression: {
+    id: 'app.submenu.application.noiseSuppression',
+    description: 'audio wasm label',
+    defaultMessage: 'Enable Noise Suppression',
+  },
+  audioWasmLabel: {
+    id: 'app.submenu.application.audioWasmLabel',
+    description: 'audio wasm label',
+    defaultMessage: 'Enable WASM processing',
+  },
   darkThemeLabel: {
     id: 'app.submenu.application.darkThemeLabel',
     description: 'dark mode label',
@@ -153,9 +173,16 @@ class ApplicationMenu extends BaseMenu {
         '18px',
         '20px',
       ],
-      audioFilterEnabled: ApplicationMenu.isAudioFilterEnabled(props
-        .settings.microphoneConstraints),
     };
+
+    // fill some settings from microphoneConstraints
+    this.state.settings.autoGainControl = ApplicationMenu.valueOrTrue(props.settings.microphoneConstraints?.autoGainControl);
+    this.state.settings.echoCancellation = ApplicationMenu.valueOrTrue(props.settings.microphoneConstraints?.echoCancellation);
+    this.state.settings.noiseSuppression = ApplicationMenu.valueOrTrue(props.settings.microphoneConstraints?.noiseSuppression);
+    this.state.audioFilterEnabled = false
+      || this.state.settings.autoGainControl
+      || this.state.settings.echoCancellation
+      || this.state.settings.noiseSuppression;
   }
 
   componentDidMount() {
@@ -184,43 +211,23 @@ class ApplicationMenu extends BaseMenu {
     });
   }
 
-  static isAudioFilterEnabled(_constraints) {
-    if (typeof _constraints === 'undefined') return true;
+  static valueOrTrue(_value) {
+    if (typeof _value === 'undefined') return true;
 
-    const _isConstraintEnabled = (constraintValue) => {
-      switch (typeof constraintValue) {
-        case 'boolean':
-          return constraintValue;
-        case 'string':
-          return constraintValue === 'true';
-        case 'object':
-          return !!(constraintValue.exact || constraintValue.ideal);
-        default:
-          return false;
-      }
-    };
-
-    let isAnyFilterEnabled = true;
-
-    const constraints = _constraints && (typeof _constraints.advanced === 'object')
-      ? _constraints.advanced
-      : _constraints || {};
-
-    isAnyFilterEnabled = Object.values(constraints).find(
-      (constraintValue) => _isConstraintEnabled(constraintValue),
-    );
-
-    return isAnyFilterEnabled;
+    return _value;
   }
 
   handleAudioFilterChange() {
-    const _audioFilterEnabled = !ApplicationMenu.isAudioFilterEnabled(this
-      .state.settings.microphoneConstraints);
     const _newConstraints = {
-      autoGainControl: _audioFilterEnabled,
-      echoCancellation: _audioFilterEnabled,
-      noiseSuppression: _audioFilterEnabled,
+      autoGainControl: ApplicationMenu.valueOrTrue(this.state.settings.autoGainControl),
+      echoCancellation: ApplicationMenu.valueOrTrue(this.state.settings.echoCancellation),
+      noiseSuppression: ApplicationMenu.valueOrTrue(this.state.settings.noiseSuppression),
     };
+    const _audioFilterEnabled = false
+      || _newConstraints.autoGainControl
+      || _newConstraints.echoCancellation
+      || _newConstraints.noiseSuppression;
+    console.log("----------------------------------------------------- _newConstraints", _newConstraints);
 
     const obj = this.state;
     obj.settings.microphoneConstraints = _newConstraints;
@@ -287,26 +294,82 @@ class ApplicationMenu extends BaseMenu {
     if (SHOW_AUDIO_FILTERS) {
       const { intl, displaySettingsStatus } = this.props;
       const { settings } = this.state;
-      const audioFilterStatus = ApplicationMenu
-        .isAudioFilterEnabled(settings.microphoneConstraints);
+      const autoGainControlStatus = ApplicationMenu
+        .valueOrTrue(settings.autoGainControl);
+      const echoCancellationStatus = ApplicationMenu
+        .valueOrTrue(settings.echoCancellation);
+      const noiseSuppressionStatus = ApplicationMenu
+        .valueOrTrue(settings.noiseSuppression);
+      const audioWasmProcessingStatus = ApplicationMenu
+        .valueOrTrue(settings.audioWasmProcessing);
 
       audioFilterOption = (
+      <div>
         <Styled.Row>
           <Styled.Col>
             <Styled.FormElementRight>
               <SubMenusStyle.MaterialSwitch
                 icons="false"
-                checked={this.state.audioFilterEnabled}
-                onChange={() => this.handleAudioFilterChange()}
-                aria-label={`${intl.formatMessage(intlMessages.audioFilterLabel)} - ${displaySettingsStatus(audioFilterStatus, true)}`}
-                data-test="audioFilterToggleBtn"
+                checked={autoGainControlStatus}
+                onChange={() => { this.handleToggle('autoGainControl'); this.handleAudioFilterChange() }}
+                aria-label={`${intl.formatMessage(intlMessages.autoGainControl)} - ${displaySettingsStatus(autoGainControlStatus, true)}`}
+                data-test="autoGainControlToggleBtn"
               />
               <Styled.Label style={{ marginLeft: '0.5rem' }}>
-                {intl.formatMessage(intlMessages.audioFilterLabel)}
+                {intl.formatMessage(intlMessages.autoGainControl)}
               </Styled.Label>
             </Styled.FormElementRight>
           </Styled.Col>
         </Styled.Row>
+        <Styled.Row>
+          <Styled.Col>
+            <Styled.FormElementRight>
+              <SubMenusStyle.MaterialSwitch
+                icons="false"
+                checked={echoCancellationStatus}
+                onChange={() => { this.handleToggle('echoCancellation'); this.handleAudioFilterChange() }}
+                aria-label={`${intl.formatMessage(intlMessages.echoCancellation)} - ${displaySettingsStatus(echoCancellationStatus, true)}`}
+                data-test="echoCancellationToggleBtn"
+              />
+              <Styled.Label style={{ marginLeft: '0.5rem' }}>
+                {intl.formatMessage(intlMessages.echoCancellation)}
+              </Styled.Label>
+            </Styled.FormElementRight>
+          </Styled.Col>
+        </Styled.Row>
+        <Styled.Row>
+          <Styled.Col>
+            <Styled.FormElementRight>
+              <SubMenusStyle.MaterialSwitch
+                icons="false"
+                checked={noiseSuppressionStatus}
+                onChange={() => { this.handleToggle('noiseSuppression'); this.handleAudioFilterChange() }}
+                aria-label={`${intl.formatMessage(intlMessages.noiseSuppression)} - ${displaySettingsStatus(noiseSuppressionStatus, true)}`}
+                data-test="noiseSuppressionToggleBtn"
+              />
+              <Styled.Label style={{ marginLeft: '0.5rem' }}>
+                {intl.formatMessage(intlMessages.noiseSuppression)}
+              </Styled.Label>
+            </Styled.FormElementRight>
+          </Styled.Col>
+        </Styled.Row>
+        <Styled.Row>
+          <Styled.Col>
+            <Styled.FormElementRight>
+              <SubMenusStyle.MaterialSwitch
+                icons="false"
+                checked={audioWasmProcessingStatus}
+                onChange={() => this.handleToggle('audioWasmProcessing')}
+                aria-label={`${intl.formatMessage(intlMessages.audioWasmLabel)} - ${displaySettingsStatus(audioWasmProcessingStatus, true)}`}
+                data-test="audioWasmToggleBtn"
+              />
+              <Styled.Label style={{ marginLeft: '0.5rem' }}>
+                {intl.formatMessage(intlMessages.audioWasmLabel)}
+              </Styled.Label>
+            </Styled.FormElementRight>
+          </Styled.Col>
+        </Styled.Row>
+      </div>
       );
     }
 

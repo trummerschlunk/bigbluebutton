@@ -107,6 +107,8 @@ const getAudioConstraints = (constraintFields = {}) => {
   const audioDeviceConstraints = userSettingsConstraints
     || window.meetingClientSettings.public.app.defaultSettings.application.microphoneConstraints
     || {};
+  console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
+  console.log("---------------------------------- audioDeviceConstraints", audioDeviceConstraints);
 
   const matchConstraints = filterSupportedConstraints(
     audioDeviceConstraints,
@@ -128,6 +130,7 @@ const doGUM = async (constraints, retryOnFailure = false) => {
     logger.warn('loadWasmProcessor failed: ' + error);
     haveWasmProcessor = false;
   }
+  console.log("---------------------------------- doGUM", haveWasmProcessor, constraints);
 
   let stream;
   try {

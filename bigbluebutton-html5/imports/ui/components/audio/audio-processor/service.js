@@ -1,3 +1,4 @@
+import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 
 // globals, assigned during loadWasmProcessor
 let moduleJs = null;
@@ -12,6 +13,21 @@ let audioProcessorForTesting = null; // TESTING global access, remove this later
 window.set_wasm_param = function(index, value) {
     audioProcessorForTesting.port.postMessage({type: 'param', index: index, value: value});
 }
+
+// check if wasm processing is enabled
+const isWasmProcessingEnabled = () => {
+    const Settings = getSettingsSingletonInstance();
+    if (typeof(Settings.application.audioWasmProcessing) !== 'undefined') {
+        console.log("---------------------------------- Settings.application.audioWasmProcessing", Settings.application.audioWasmProcessing);
+        return Settings.application.audioWasmProcessing;
+    }
+    if (typeof(window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing) !== 'undefined') {
+        console.log("---------------------------------- window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing", window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing);
+        return window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing;
+    }
+    console.log("---------------------------------- isWasmProcessingEnabled default true");
+    return true;
+};
 
 // create an audio processor on top of a stream, returns a processed stream
 const createWasmProcessorStream = (stream) => {
@@ -29,6 +45,7 @@ const createWasmProcessorStream = (stream) => {
 
     const audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', options);
     audioProcessor.port.postMessage({type: 'init', js: moduleJs, wasm: moduleWasm});
+    audioProcessor.port.postMessage({type: 'param', index: 9, value: isWasmProcessingEnabled() ? 0.0 : 1.0 });
 
     sourceContext.connect(audioProcessor);
     audioProcessor.connect(contextDestination);
