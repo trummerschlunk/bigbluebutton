@@ -107,15 +107,16 @@ const getAudioConstraints = (constraintFields = {}) => {
   const audioDeviceConstraints = userSettingsConstraints
     || window.meetingClientSettings.public.app.defaultSettings.application.microphoneConstraints
     || {};
-  console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
-  console.log("---------------------------------- audioDeviceConstraints", audioDeviceConstraints);
 
   const matchConstraints = filterSupportedConstraints(
     audioDeviceConstraints,
   );
+  console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
+  console.log("---------------------------------- audioDeviceConstraints", audioDeviceConstraints);
+  console.log("---------------------------------- matchConstraints", matchConstraints);
 
   if (deviceId) {
-    matchConstraints.deviceId = { exact: deviceId };
+    matchConstraints.deviceId = { ideal: deviceId };
   }
 
   return matchConstraints;
@@ -129,6 +130,13 @@ const doGUM = async (constraints, retryOnFailure = false) => {
   } catch (error) {
     logger.warn('loadWasmProcessor failed: ' + error);
     haveWasmProcessor = false;
+  }
+
+  // make the constraints less exact, so it works more often
+  if (constraints.audio) {
+    for (let constraint in constraints.audio) {
+      constraints.audio[constraint] = { ideal: constraints.audio[constraint] };
+    }
   }
   console.log("---------------------------------- doGUM", haveWasmProcessor, constraints);
 
