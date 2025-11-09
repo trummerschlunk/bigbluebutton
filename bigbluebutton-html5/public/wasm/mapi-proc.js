@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: ISC
 
 // known constants
-const maxBufferSize = 2048;
+const nominalBufferSize = 128;
 const sizeof_float = 4;
 const sizeof_ptr = 4;
 
 // function to setup wasm + emscripten module options for offline fetch
 const createWasmOpts = (wasmBlob, postRunCallback) => {
     return {
-        // override instantiateWasm to use previously retrieved data, `fetch` is not allowed here
+        // override to use previously retrieved blob data, as `fetch` is not allowed in worklets
         instantiateWasm: (imports, successCallback) => {
             WebAssembly.instantiate(wasmBlob, imports).then(output => {
                 // Taken from emscripten example:
                 // When overriding instantiateWasm, in asan builds, we also need
                 // to take care of creating the WasmOffsetConverter
                 if (typeof WasmOffsetConverter != "undefined") {
-                    wasmOffsetConverter = new WasmOffsetConverter(bytes, output.module);
+                    wasmOffsetConverter = new WasmOffsetConverter(wasmBlob, output.module);
                 }
 
                 successCallback(output.instance, output.module);
@@ -38,32 +38,26 @@ class MapiProcessorInstance {
         this.handle = module._mapi_create(sampleRate);
         this.enabled = true;
 
-        this.audioData = module._malloc(sizeof_float * maxBufferSize);
+        this.audioData = module._malloc(sizeof_float * nominalBufferSize);
         this.audioPtrs = module._malloc(sizeof_ptr);
         module.HEAPU32[this.audioPtrs + (0 << 2) >> 2] = this.audioData;
-    }
-
-    destructor() {
-        this.module._free(this.audioData);
-        this.module._free(this.audioPtrs);
-        this.module._mapi_destroy(this.handle);
     }
 
     param(index, value) {
         this.module._mapi_set_parameter(this.handle, index, value);
     }
 
-    process(buffer) {
+    process(buffer, bufferSize, bufferOffset) {
         if (! this.enabled)
             return;
 
-        for (var i = 0; i < buffer.length; ++i)
-            this.module.HEAPF32[this.audioData + (i << 2) >> 2] = buffer[i];
+        for (let i = 0; i < bufferSize; ++i)
+            this.module.HEAPF32[this.audioData + (i << 2) >> 2] = buffer[bufferOffset + i];
 
-        this.module._mapi_process(this.handle, this.audioPtrs, this.audioPtrs, buffer.length);
+        this.module._mapi_process(this.handle, this.audioPtrs, this.audioPtrs, bufferSize);
 
-        for (var i = 0; i < buffer.length; ++i)
-            buffer[i] = this.module.HEAPF32[this.audioData + (i << 2) >> 2];
+        for (let i = 0; i < bufferSize; ++i)
+            buffer[bufferOffset + i] = this.module.HEAPF32[this.audioData + (i << 2) >> 2];
     }
 };
 
@@ -78,8 +72,8 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
         if (options.numberOfInputs != 1)
             throw Error('Invalid IO, must be mono');
 
-        // instances of audio plugins (chain of FX)
-        this.instances = {};
+        // MAPI processor instance
+        this.bbba = null;
 
         // bi-directional port communication
         this.port.onmessage = event => {
@@ -88,8 +82,8 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
             case 'init':
                 this.init(event.data);
                 break;
-            case 'enabled':
-                this.enabled(event.data);
+            case 'enable':
+                this.enable(event.data);
                 break;
             case 'param':
                 this.param(event.data);
@@ -99,65 +93,60 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
     }
 
     init(data) {
-        // execute JS to expose the emscripten module functions
-        const jsfn_bbba = new Function(data.bbba.js + 'return mapi_bbba;');
-        const jsfn_renooice = new Function(data.renooice.js + 'return mapi_renooice;');
-
+        // execute JS to expose the emscripten load module function
+        const jsfn_bbba = new Function(data.js + 'return mapi_bbba;');
         const create_module_bbba = jsfn_bbba.call();
-        const create_module_renooice = jsfn_renooice.call();
 
-        // create wasm opts
-        const opts_bbba = createWasmOpts(data.bbba.wasm, (module) => {
-            this.instances.bbba = new MapiProcessorInstance(module);
-        });
-        const opts_renooice = createWasmOpts(data.renooice.wasm, (module) => {
-            this.instances.renooice = new MapiProcessorInstance(module);
+        // create wasm opts for offline loading
+        const opts = createWasmOpts(data.wasm, (module) => {
+            this.bbba = new MapiProcessorInstance(module);
+            this.port.postMessage({ type: 'loaded' });
         });
 
-        // create the wasm modules and instances
-        create_module_bbba(opts_bbba);
-        create_module_renooice(opts_renooice);
+        // create the wasm module and instance
+        create_module_bbba(opts);
     }
 
-    enabled(data) {
-        if (!this.instances[data.module]) {
-            console.error('invalid module, possible choices:', Object.keys(this.instances));
+    enable(data) {
+        if (!this.bbba) {
+            console.error('BBBA wasm is not loaded yet!');
             return;
         }
 
-        this.instances[data.module].enabled = !!data.enabled;
-        console.log('module status changed:', data.module, this.instances[data.module].enabled);
+        this.bbba.enabled = !!data.enable;
+        console.log('BBBA status changed:', this.bbba.enabled);
     }
 
     param(data) {
-        if (!this.instances?.bbba)
+        if (!this.bbba) {
+            console.error('BBBA wasm is not loaded yet!');
             return;
+        }
 
-        this.instances.bbba.param(data.index, data.value);
+        this.bbba.param(data.index, data.value);
     }
 
     process(inputs, outputs, parameters) {
-        if (!this.instances?.bbba || !this.instances?.renooice)
-            return true;
+        if (!this.bbba)
+            return false;
 
         const input = inputs[0];
         const output = outputs[0];
 
-        // IO check
+        // IO check, can be zero if stream is not connected yet
         if (input.length == 0 || output.length == 0)
-            // can be zero if stream is not connected yet
-            return true;
+            return false;
 
         // use in-place processing
         const buffer = output[0];
         // TODO use something like output.copyFrom(input);
-        for (var i = 0; i < buffer.length; ++i)
+        for (let i = 0; i < buffer.length; ++i)
             buffer[i] = input[0][i];
 
-        this.instances.renooice.process(buffer);
-        this.instances.bbba.process(buffer);
+        for (let offset = 0; offset < buffer.length; offset += nominalBufferSize)
+            this.bbba.process(buffer, Math.min(nominalBufferSize, buffer.length - offset), offset);
 
-        return true;
+        return false;
     }
 };
 

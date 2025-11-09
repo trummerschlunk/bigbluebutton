@@ -1,19 +1,23 @@
 import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 
-// globals, assigned during loadWasmProcessor
-const loadedFiles = {
-    bbba: {},
-    renooice: {},
-};
-let workletLoaded = false;
+// store loaded wasm files so we can download in parallel
+// but only resolve the load Promise after we fetch everything
+const loadedFiles = {};
+let workletFileLoaded = false;
 
-// global audio context needed for worklet
+// Whether the worklet module has fully loaded, requires user interaction
+let workletModuleLoaded = false;
+
+// Callback in case we need the worklet module but it is not loaded yet
+let workletModuleLoadCb = null;
+
+// global audio context used for the worklet
 let audioContext = null;
 
 // global function for testing purposes
 let audioProcessorForTesting = null; // TESTING global access, remove this later
-window.set_wasm_enabled = function(module, enabled) {
-    audioProcessorForTesting.port.postMessage({type: 'enabled', module: module, enabled: enabled});
+window.set_wasm_enabled = function(enable) {
+    audioProcessorForTesting.port.postMessage({type: 'enable', enable: enable});
 }
 window.set_wasm_param = function(index, value) {
     audioProcessorForTesting.port.postMessage({type: 'param', index: index, value: value});
@@ -39,18 +43,26 @@ const createWasmProcessorStream = (stream) => {
     const contextSource = audioContext.createMediaStreamSource(stream);
     const contextDestination = audioContext.createMediaStreamDestination();
 
-    const audioProcessorOptions = {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
+    const createProcessorFn = () => {
+        const opts = {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            channels: 1,
+        };
+        audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', opts);
+        audioProcessor.port.postMessage({ type: 'init', ...loadedFiles });
+
+        contextSource.connect(audioProcessor);
+        audioProcessor.connect(contextDestination);
+
+        audioProcessorForTesting = audioProcessor;
     };
-    const audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', audioProcessorOptions);
-    audioProcessor.port.postMessage({ type: 'init', ...loadedFiles });
-    // audioProcessor.port.postMessage({type: 'param', index: 9, value: isWasmProcessingEnabled() ? 0.0 : 1.0 });
 
-    contextSource.connect(audioProcessor);
-    audioProcessor.connect(contextDestination);
-
-    audioProcessorForTesting = audioProcessor;
+    if (workletModuleLoaded) {
+        createProcessorFn();
+    } else {
+        workletModuleLoadCb = createProcessorFn;
+    }
 
     console.log("---------------------------------------------------------------- createWasmProcessorStream ok!");
     return contextDestination.stream;
@@ -59,9 +71,13 @@ const createWasmProcessorStream = (stream) => {
 // load processor files, trigger Promise resolve when all done
 const loadWasmProcessor = () => {
     return new Promise((resolve, reject) => {
+        if (! isWasmProcessingEnabled()) {
+            reject('WASM processing is not available or enabled');
+            return;
+        }
+
         const checkResolved = () => {
-            if (loadedFiles.bbba.js && loadedFiles.bbba.wasm &&
-                loadedFiles.renooice.js && loadedFiles.renooice.wasm && workletLoaded) {
+            if (loadedFiles.js && loadedFiles.wasm && workletFileLoaded) {
                 resolve(true);
                 return true;
             }
@@ -75,56 +91,61 @@ const loadWasmProcessor = () => {
             return;
         }
 
-        // function to load audio worklet
-        const loadAudioWorklet = () => {
-            // some browsers fail to add worklet module, force things here
-            // see https://stackoverflow.com/questions/52760219/use-audioworklet-within-electron-domexception-the-user-aborted-a-request/
-            fetch('/html5client/wasm/mapi-proc.js').then(function(resp) {
-                resp.text().then(function(text) {
-                    const processorBlob = new Blob([text], { type: 'text/javascript' });
-                    const processorURL = URL.createObjectURL(processorBlob);
-                    audioContext.audioWorklet.addModule(processorURL).then(function() {
-                        workletLoaded = true;
-                        checkResolved();
-                    }).catch(reject);
-                }).catch(reject);
-            }).catch(reject);
-        };
-
         // create audio context if needed
         if (!audioContext) {
             audioContext = new AudioContext();
-
-            // can't load worklet until audio is resumed
-            if (audioContext.state === 'suspended') {
-                const resume = () => {
-                    console.log("---------------------------------- clicked document, trying to resume audio context");
-                    audioContext.resume().then(loadAudioWorklet).catch(reject);
-                    document.removeEventListener('click', resume);
-                };
-                document.addEventListener('click', resume);
-            } else {
-                loadAudioWorklet();
-            }
         }
 
+        // load audio worklet
+        fetch('/html5client/wasm/mapi-proc.js').then(function(resp) {
+            resp.text().then(function(text) {
+                // NOTE it's not quite loaded yet,
+                // but we cannot wait for `audioWorklet.addModule` as that requires use interaction
+                workletFileLoaded = true;
+                checkResolved();
+
+                // function to load audio worklet
+                const loadAudioWorklet = () => {
+                    // some browsers fail to add worklet module, force things here
+                    // see https://stackoverflow.com/questions/52760219/use-audioworklet-within-electron-domexception-the-user-aborted-a-request/
+                    const processorBlob = new Blob([text], { type: 'text/javascript' });
+                    const processorURL = URL.createObjectURL(processorBlob);
+                    audioContext.audioWorklet.addModule(processorURL);
+                    workletModuleLoaded = true;
+                    if (workletModuleLoadCb) {
+                        workletModuleLoadCb();
+                        workletModuleLoadCb = null;
+                    }
+                };
+
+                // can't load worklet while audio context is suspended
+                // resuming audio context requires user interaction
+                if (audioContext.state === 'suspended') {
+                    const resume = () => {
+                        console.log("---------------------------------- clicked document, trying to resume audio context");
+                        audioContext.resume().then(loadAudioWorklet).catch(reject);
+                        document.removeEventListener('click', resume);
+                    };
+                    document.addEventListener('click', resume);
+                } else {
+                    loadAudioWorklet();
+                }
+            }).catch(reject);
+        }).catch(reject);
+
         // load wasm files
-        const loadWasmFiles = (basename, prop) => {
-            fetch('/html5client/wasm/' + basename + '-mapi.wasm').then(function(resp) {
-                resp.arrayBuffer().then(function(bytes) {
-                    loadedFiles[prop].wasm = bytes;
-                    checkResolved();
-                }).catch(reject);
+        fetch('/html5client/wasm/BBBA-mapi.wasm').then(function(resp) {
+            resp.arrayBuffer().then(function(bytes) {
+                loadedFiles.wasm = bytes;
+                checkResolved();
             }).catch(reject);
-            fetch('/html5client/wasm/' + basename + '-mapi.js').then(function(resp) {
-                resp.text().then(function(text) {
-                    loadedFiles[prop].js = text;
-                    checkResolved();
-                }).catch(reject);
+        }).catch(reject);
+        fetch('/html5client/wasm/BBBA-mapi.js').then(function(resp) {
+            resp.text().then(function(text) {
+                loadedFiles.js = text;
+                checkResolved();
             }).catch(reject);
-        };
-        loadWasmFiles('BBBA', 'bbba');
-        loadWasmFiles('ReNooice', 'renooice');
+        }).catch(reject);
 
         console.log("---------------------------------- loadWasmProcessor end");
     });
