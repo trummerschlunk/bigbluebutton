@@ -1112,19 +1112,10 @@ class SIPSession {
 
       if (isChrome) {
         matchConstraints.deviceId = this.inputDeviceId;
-
-        const stream = await doGUM({ audio: matchConstraints });
-
-        this.currentSession.sessionDescriptionHandler
-          .setLocalMediaStream(stream);
-      } else {
-        const { localMediaStream } = this.currentSession
-          .sessionDescriptionHandler;
-
-        localMediaStream.getAudioTracks().forEach(
-          track => track.applyConstraints(matchConstraints),
-        );
       }
+
+      const stream = await doGUM({ audio: matchConstraints });
+      this.currentSession.sessionDescriptionHandler.setLocalMediaStream(stream);
     } catch (error) {
       logger.error({
         logCode: 'sipjs_audio_constraint_error',

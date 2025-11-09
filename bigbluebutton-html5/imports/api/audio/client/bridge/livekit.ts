@@ -794,12 +794,10 @@ export default class LiveKitAudioBridge extends BaseAudioBridge {
       if (IS_CHROME) {
         // @ts-ignore
         matchConstraints.deviceId = this.inputDeviceId;
-        const stream = await doGUM({ audio: matchConstraints });
-        await this.setInputStream(stream, { deviceId: this.inputDeviceId, force: true });
-      } else {
-        this.inputStream?.getAudioTracks()
-          .forEach((track) => track.applyConstraints(matchConstraints));
       }
+
+      const stream = await doGUM({ audio: matchConstraints });
+      await this.setInputStream(stream, { deviceId: this.inputDeviceId, force: true });
     } catch (error) {
       logger.error({
         logCode: 'livekit_audio_constraint_error',
