@@ -25,9 +25,6 @@ window.set_wasm_param = function(index, value) {
 
 // check if wasm processing is enabled
 const isWasmProcessingEnabled = () => {
-    if (typeof(WebAssembly) === 'undefined') {
-        return false;
-    }
     const Settings = getSettingsSingletonInstance();
     if (typeof(Settings.application.audioWasmProcessing) !== 'undefined') {
         return Settings.application.audioWasmProcessing;
@@ -40,6 +37,10 @@ const isWasmProcessingEnabled = () => {
 
 // create an audio processor on top of a stream, returns a processed stream
 const createWasmProcessorStream = (stream) => {
+    if (! isWasmProcessingEnabled()) {
+        return stream;
+    }
+
     const contextSource = audioContext.createMediaStreamSource(stream);
     const contextDestination = audioContext.createMediaStreamDestination();
 
@@ -71,8 +72,8 @@ const createWasmProcessorStream = (stream) => {
 // load processor files, trigger Promise resolve when all done
 const loadWasmProcessor = () => {
     return new Promise((resolve, reject) => {
-        if (! isWasmProcessingEnabled()) {
-            reject('WASM processing is not available or enabled');
+        if (typeof(WebAssembly) === 'undefined') {
+            reject('WASM processing is not available');
             return;
         }
 
