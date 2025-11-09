@@ -149,6 +149,7 @@ class ApplicationMenu extends BaseMenu {
       .isAudioWasmProcessingEnabled(props.settings.audioWasmProcessing);
     const audioFilterStatus = !audioWasmProcessingStatus && ApplicationMenu
       .isAudioFilterEnabled(props.settings.microphoneConstraints);
+    console.log("ApplicationMenu status", audioFilterStatus, audioWasmProcessingStatus);
 
     this.state = {
       settingsName: 'application',
@@ -217,7 +218,7 @@ class ApplicationMenu extends BaseMenu {
       ? _constraints.advanced
       : _constraints || {};
 
-    isAnyFilterEnabled = Object.values(constraints).find(
+    isAnyFilterEnabled = !!Object.values(constraints).find(
       (constraintValue) => _isConstraintEnabled(constraintValue),
     );
 
@@ -250,7 +251,7 @@ class ApplicationMenu extends BaseMenu {
     };
 
     const obj = this.state;
-    obj.settings.audioWasmProcessingEnabled = false;
+    obj.settings.audioWasmProcessing = false;
     obj.settings.microphoneConstraints = _newConstraints;
     this.handleUpdateSettings(this.state.settingsName, obj.settings);
     this.setState({ audioFilterEnabled: _audioFilterEnabled, audioWasmProcessingEnabled: false });
@@ -259,7 +260,7 @@ class ApplicationMenu extends BaseMenu {
   handleAudioWasmProcessingChange() {
     if (typeof(WebAssembly) === 'undefined') return;
     const _audioWasmProcessingEnabled = !ApplicationMenu.isAudioWasmProcessingEnabled(this
-      .state.settings.audioWasmProcessingEnabled);
+      .state.settings.audioWasmProcessing);
     console.log("-------------------- handleAudioWasmProcessingChange", _audioWasmProcessingEnabled);
     const _newConstraints = {
       autoGainControl: false,
@@ -268,7 +269,7 @@ class ApplicationMenu extends BaseMenu {
     };
 
     const obj = this.state;
-    obj.settings.audioWasmProcessingEnabled = _audioWasmProcessingEnabled;
+    obj.settings.audioWasmProcessing = _audioWasmProcessingEnabled;
     obj.settings.microphoneConstraints = _newConstraints;
     this.handleUpdateSettings(this.state.settingsName, obj.settings);
     this.setState({ audioFilterEnabled: false, audioWasmProcessingEnabled: _audioWasmProcessingEnabled });

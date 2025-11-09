@@ -1,7 +1,7 @@
 import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 import logger from '/imports/startup/client/logger';
 import { getStorageSingletonInstance } from '/imports/ui/services/storage';
-import { createWasmProcessorStream, loadWasmProcessor } from '/imports/ui/components/audio/audio-processor/service';
+import { createWasmProcessorStream, isWasmProcessingEnabled, loadWasmProcessor } from '/imports/ui/components/audio/audio-processor/service';
 
 const AUDIO_SESSION_NUM_KEY = 'AudioSessionNumber';
 const DEFAULT_INPUT_DEVICE_ID = '';
@@ -137,6 +137,13 @@ const doGUM = async (constraints, retryOnFailure = false) => {
     for (let constraint in constraints.audio) {
       constraints.audio[constraint] = { ideal: constraints.audio[constraint] };
     }
+  }
+
+  // We want echo-cancel on top of WASM
+  if (isWasmProcessingEnabled()) {
+    if (!constraints.audio)
+      constraints.audio = {};
+    constraints.audio.echoCancellation = { ideal: true };
   }
   console.log("---------------------------------- doGUM", haveWasmProcessor, constraints);
 

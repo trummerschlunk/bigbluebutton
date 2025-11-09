@@ -14,6 +14,9 @@ let workletModuleLoadCb = null;
 // global audio context used for the worklet
 let audioContext = null;
 
+// the last used stream, which we need to stop before connecting to a different one
+let lastUsedStream = null;
+
 // global function for testing purposes
 let audioProcessorForTesting = null; // TESTING global access, remove this later
 window.set_wasm_enabled = function(enable) {
@@ -41,6 +44,12 @@ const createWasmProcessorStream = (stream) => {
         return stream;
     }
 
+    // stop old stream before connecting to new one
+    if (lastUsedStream) {
+        lastUsedStream.getTracks().forEach(track => track.stop());
+        lastUsedStream = null;
+    }
+
     const contextSource = audioContext.createMediaStreamSource(stream);
     const contextDestination = audioContext.createMediaStreamDestination();
 
@@ -50,12 +59,13 @@ const createWasmProcessorStream = (stream) => {
             numberOfOutputs: 1,
             channels: 1,
         };
-        audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', opts);
+        const audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', opts);
         audioProcessor.port.postMessage({ type: 'init', ...loadedFiles });
 
         contextSource.connect(audioProcessor);
         audioProcessor.connect(contextDestination);
 
+        lastUsedStream = stream;
         audioProcessorForTesting = audioProcessor;
     };
 
@@ -154,5 +164,6 @@ const loadWasmProcessor = () => {
 
 export {
     createWasmProcessorStream,
+    isWasmProcessingEnabled,
     loadWasmProcessor,
 };
