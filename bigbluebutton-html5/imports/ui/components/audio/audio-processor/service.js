@@ -11,20 +11,12 @@ let workletModuleLoaded = false;
 // Callback in case we need the worklet module but it is not loaded yet
 let workletModuleLoadCb = null;
 
-// global audio context used for the worklet
+// global audio context and processor used for the worklet
 let audioContext = null;
 
-// the last used stream, which we need to stop before connecting to a different one
+// the last used processor and stream, which we need to stop before connecting to a different one
+let lastUsedProcessor = null;
 let lastUsedStream = null;
-
-// global function for testing purposes
-let audioProcessorForTesting = null; // TESTING global access, remove this later
-window.set_wasm_enabled = function(enable) {
-    audioProcessorForTesting.port.postMessage({type: 'enable', enable: enable});
-}
-window.set_wasm_param = function(index, value) {
-    audioProcessorForTesting.port.postMessage({type: 'param', index: index, value: value});
-}
 
 // check if wasm processing is enabled
 const isWasmProcessingEnabled = () => {
@@ -44,7 +36,11 @@ const createWasmProcessorStream = (stream) => {
         return stream;
     }
 
-    // stop old stream before connecting to new one
+    // stop old processor and stream before connecting to new one
+    if (lastUsedProcessor) {
+        lastUsedProcessor.port.postMessage({ type: 'destroy' });
+        lastUsedProcessor = null;
+    }
     if (lastUsedStream) {
         lastUsedStream.getTracks().forEach(track => track.stop());
         lastUsedStream = null;
@@ -65,8 +61,8 @@ const createWasmProcessorStream = (stream) => {
         contextSource.connect(audioProcessor);
         audioProcessor.connect(contextDestination);
 
+        lastUsedProcessor = audioProcessor;
         lastUsedStream = stream;
-        audioProcessorForTesting = audioProcessor;
     };
 
     if (workletModuleLoaded) {

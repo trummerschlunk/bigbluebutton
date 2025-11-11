@@ -111,14 +111,14 @@ const getAudioConstraints = (constraintFields = {}) => {
   const matchConstraints = filterSupportedConstraints(
     audioDeviceConstraints,
   );
-  console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
-  console.log("---------------------------------- audioDeviceConstraints", audioDeviceConstraints);
-  console.log("---------------------------------- matchConstraints", matchConstraints);
 
   if (deviceId) {
     matchConstraints.deviceId = { ideal: deviceId };
   }
 
+  console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
+  console.log("---------------------------------- audioDeviceConstraints", audioDeviceConstraints);
+  console.log("---------------------------------- matchConstraints", matchConstraints);
   return matchConstraints;
 };
 
