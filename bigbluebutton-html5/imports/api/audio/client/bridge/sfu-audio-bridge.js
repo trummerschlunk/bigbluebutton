@@ -474,7 +474,7 @@ export default class SFUAudioBridge extends BaseAudioBridge {
 
       const matchConstraints = filterSupportedConstraints(constraints);
 
-      if (IS_CHROME) {
+      if (IS_CHROME || true) {
         matchConstraints.deviceId = this.inputDeviceId;
         const stream = await doGUM({ audio: matchConstraints });
         await this.setInputStream(stream);

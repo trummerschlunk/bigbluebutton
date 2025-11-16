@@ -204,7 +204,8 @@ const doGUM = async (constraints, retryOnFailure = false) => {
 
 const applyGUMConstraints = (stream, constraints) => {
   console.log("---------------------------------- applyGUMConstraints", constraints);
-  setWasmProcessorEnabled(isWasmProcessingEnabled());
+  const wasmProcessingEnabled = isWasmProcessingEnabled();
+  setWasmProcessorEnabled(wasmProcessingEnabled);
 
   // We want only echo-cancel on top of WASM
   if (wasmProcessingEnabled) {
@@ -215,9 +216,16 @@ const applyGUMConstraints = (stream, constraints) => {
     });
   }
 
-  console.log("---------------------------------- applyGUMConstraints 2", constraints);
-  stream?.getAudioTracks().forEach((track) => track.applyConstraints(constraints));
-  console.log("---------------------------------- applyGUMConstraints ok!");
+  // make the constraints less exact, so it works more often
+  for (let constraint in constraints) {
+    constraints[constraint] = { ideal: constraints[constraint] };
+  }
+
+  console.log("---------------------------------- applyGUMConstraints fixed", constraints);
+
+  stream?.getAudioTracks().forEach((track) => track.applyConstraints(constraints).then(() => {
+    console.log("---------------------------------- applyGUMConstraints ok!");
+  }));
 };
 
 const isEnabled = () => window.meetingClientSettings.public.app.audioCaptions.enabled;

@@ -1111,7 +1111,7 @@ class SIPSession {
       //Chromium bug - see: https://bugs.chromium.org/p/chromium/issues/detail?id=796964&q=applyConstraints&can=2
       const { isChrome } = browserInfo;
 
-      if (isChrome) {
+      if (isChrome || true) {
         matchConstraints.deviceId = this.inputDeviceId;
 
         const stream = await doGUM({ audio: matchConstraints });

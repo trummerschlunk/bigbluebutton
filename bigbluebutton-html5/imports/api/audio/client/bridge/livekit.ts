@@ -792,7 +792,7 @@ export default class LiveKitAudioBridge extends BaseAudioBridge {
 
       const matchConstraints = filterSupportedConstraints(constraints);
 
-      if (IS_CHROME) {
+      if (IS_CHROME || true) {
         // @ts-ignore
         matchConstraints.deviceId = this.inputDeviceId;
         const stream = await doGUM({ audio: matchConstraints });
