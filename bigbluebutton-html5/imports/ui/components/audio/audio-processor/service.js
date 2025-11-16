@@ -1,96 +1,136 @@
-import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 
-// store loaded wasm files so we can download in parallel
-// but only resolve the load Promise after we fetch everything
-const loadedFiles = {};
-let workletFileLoaded = false;
-
-// Whether the worklet module has fully loaded, requires user interaction
-let workletModuleLoaded = false;
-
-// Callback in case we need the worklet module but it is not loaded yet
-let workletModuleLoadCb = null;
-
-// global audio context and processor used for the worklet
-let audioContext = null;
-
-// the last used processor and stream, which we need to stop before connecting to a different one
-let lastUsedProcessor = null;
-let lastUsedStream = null;
-
-// check if wasm processing is enabled
-const isWasmProcessingEnabled = () => {
-    const Settings = getSettingsSingletonInstance();
-    if (typeof(Settings.application.audioWasmProcessing) !== 'undefined') {
-        return Settings.application.audioWasmProcessing;
-    }
-    if (typeof(window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing) !== 'undefined') {
-        return window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing;
-    }
-    return true;
+// files loaded during loadWasmProcessorFiles
+const loadedFiles = {
+    // store first caught error
+    error: null,
+    // BBBA-mapi.wasm
+    wasmBlob: null,
+    // BBBA-mapi.js
+    wasmJS: null,
+    // mapi-proc.js
+    worklet: null,
 };
 
-// create an audio processor on top of a stream, returns a processed stream
+// global audio processor so we can communicate with it
+let audioProcessor = null;
+
+// global functions for testing purposes
+const setWasmProcessorEnabled = (enabled) => {
+    if (audioProcessor) {
+        audioProcessor.port.postMessage({type: 'enable', enable: enabled});
+    }
+};
+
+const setWasmProcessorParameter = (index, value) => {
+    if (audioProcessor) {
+        audioProcessor.port.postMessage({type: 'param', index: index, value: value});
+    }
+};
+
+// create an audio processor on top of a stream, trigger Promise resolve with a processed stream
 const createWasmProcessorStream = (stream) => {
-    if (! isWasmProcessingEnabled()) {
-        return stream;
+    // cleanup old processor
+    if (audioProcessor) {
+        audioProcessor.port.postMessage({type: 'destroy'});
+        audioProcessor = null;
     }
 
-    // stop old processor and stream before connecting to new one
-    if (lastUsedProcessor) {
-        lastUsedProcessor.port.postMessage({ type: 'destroy' });
-        lastUsedProcessor = null;
-    }
-    if (lastUsedStream) {
-        lastUsedStream.getTracks().forEach(track => track.stop());
-        lastUsedStream = null;
-    }
+    return new Promise((resolve, reject) => {
+        // create audio context first
+        const audioContext = new AudioContext();
 
-    const contextSource = audioContext.createMediaStreamSource(stream);
-    const contextDestination = audioContext.createMediaStreamDestination();
+        // function to load audio worklet, called once audio context is running
+        const loadAudioWorklet = async () => {
+            console.log("---------------------------------------------------------------- loadAudioWorklet start");
+            const processorBlob = new Blob([loadedFiles.worklet], { type: 'text/javascript' });
+            const processorURL = URL.createObjectURL(processorBlob);
 
-    const createProcessorFn = () => {
-        const opts = {
-            numberOfInputs: 1,
-            numberOfOutputs: 1,
-            channels: 1,
+            audioContext.audioWorklet.addModule(processorURL).then(() => {
+                console.log("---------------------------------------------------------------- loadAudioWorklet module loaded");
+                const contextSource = audioContext.createMediaStreamSource(stream);
+                const contextDestination = audioContext.createMediaStreamDestination();
+                console.log("---------------------------------------------------------------- loadAudioWorklet streams created");
+
+                // FIXME can't force mono?
+                const audioProcessorOptions = {
+                    numberOfInputs: 1,
+                    numberOfOutputs: 1,
+                    channels: 1,
+                };
+                audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', audioProcessorOptions);
+                console.log("---------------------------------------------------------------- loadAudioWorklet audioProcessor created");
+                audioProcessor.port.onmessage = event => {
+                    if (event.data?.type == 'loaded') {
+                        console.log("audioProcessor has been loaded, triggering callback now");
+                        resolve([contextDestination.stream, audioProcessor, audioContext]);
+                    }
+                };
+                audioProcessor.port.postMessage({ type: 'init', wasm: loadedFiles.wasmBlob, js: loadedFiles.wasmJS });
+                console.log("---------------------------------------------------------------- loadAudioWorklet init called");
+
+                contextSource.connect(audioProcessor);
+                audioProcessor.connect(contextDestination);
+
+                console.log("---------------------------------------------------------------- loadAudioWorklet ok!");
+            }).catch(reject);
         };
-        const audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', opts);
-        audioProcessor.port.postMessage({ type: 'init', ...loadedFiles });
 
-        contextSource.connect(audioProcessor);
-        audioProcessor.connect(contextDestination);
-
-        lastUsedProcessor = audioProcessor;
-        lastUsedStream = stream;
-    };
-
-    if (workletModuleLoaded) {
-        createProcessorFn();
-    } else {
-        workletModuleLoadCb = createProcessorFn;
-    }
-
-    console.log("---------------------------------------------------------------- createWasmProcessorStream ok!");
-    return contextDestination.stream;
+        audioContext.resume().then(loadAudioWorklet).catch((err) => {
+            // chrome does not allow to load worklet while audio context is suspended
+            // resuming audio context requires user interaction
+            if (audioContext.state === 'suspended') {
+                const resume = () => {
+                    console.log("---------------------------------- clicked document, trying to resume audio context");
+                    audioContext.resume().then(loadAudioWorklet).catch(reject);
+                    document.removeEventListener('click', resume);
+                };
+                document.addEventListener('click', resume);
+            } else {
+                reject(err);
+            }
+        });
+    });
 };
 
 // load processor files, trigger Promise resolve when all done
-const loadWasmProcessor = () => {
+const loadWasmProcessorFiles = () => {
     return new Promise((resolve, reject) => {
+        // early checks
+        if (typeof(AudioContext) === 'undefined') {
+            reject('AudioContext unsupported');
+            return;
+        }
         if (typeof(WebAssembly) === 'undefined') {
-            reject('WASM processing is not available');
+            reject('WebAssembly unsupported');
+            return;
+        }
+        if (! WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,2,8,1,1,97,1,98,3,127,1,6,6,1,127,1,65,0,11,7,5,1,1,97,3,1]))) {
+            reject('Importable/Exportable mutable globals unsupported');
             return;
         }
 
+        console.log("---------------------------------- loadWasmProcessor start");
         const checkResolved = () => {
-            if (loadedFiles.js && loadedFiles.wasm && workletFileLoaded) {
+            if (loadedFiles.wasmBlob && loadedFiles.wasmJS && loadedFiles.worklet) {
                 resolve(true);
+                return true;
+            }
+            if (loadedFiles.error) {
+                reject(loadedFiles.error);
                 return true;
             }
             return false;
         };
-        console.log("---------------------------------- loadWasmProcessor start");
+        const catchHandler = (error) => {
+            // only reject Promise once
+            if (loadedFiles.error) {
+                loadedFiles.error = error;
+                reject(loadedFiles.error);
+            }
+        };
+
+        // try again in case of previous error
+        loadedFiles.error = null;
 
         // return early if already loaded before
         if (checkResolved()) {
@@ -98,68 +138,33 @@ const loadWasmProcessor = () => {
             return;
         }
 
-        // create audio context if needed
-        if (!audioContext) {
-            audioContext = new AudioContext();
-        }
-
-        // load audio worklet
-        fetch('/html5client/wasm/mapi-proc.js').then(function(resp) {
-            resp.text().then(function(text) {
-                // NOTE it's not quite loaded yet,
-                // but we cannot wait for `audioWorklet.addModule` as that requires use interaction
-                workletFileLoaded = true;
-                checkResolved();
-
-                // function to load audio worklet
-                const loadAudioWorklet = () => {
-                    // some browsers fail to add worklet module, force things here
-                    // see https://stackoverflow.com/questions/52760219/use-audioworklet-within-electron-domexception-the-user-aborted-a-request/
-                    const processorBlob = new Blob([text], { type: 'text/javascript' });
-                    const processorURL = URL.createObjectURL(processorBlob);
-                    audioContext.audioWorklet.addModule(processorURL);
-                    workletModuleLoaded = true;
-                    if (workletModuleLoadCb) {
-                        workletModuleLoadCb();
-                        workletModuleLoadCb = null;
-                    }
-                };
-
-                // can't load worklet while audio context is suspended
-                // resuming audio context requires user interaction
-                if (audioContext.state === 'suspended') {
-                    const resume = () => {
-                        console.log("---------------------------------- clicked document, trying to resume audio context");
-                        audioContext.resume().then(loadAudioWorklet).catch(reject);
-                        document.removeEventListener('click', resume);
-                    };
-                    document.addEventListener('click', resume);
-                } else {
-                    loadAudioWorklet();
-                }
-            }).catch(reject);
-        }).catch(reject);
-
-        // load wasm files
+        // load wasm files and worklet
         fetch('/html5client/wasm/BBBA-mapi.wasm').then(function(resp) {
             resp.arrayBuffer().then(function(bytes) {
-                loadedFiles.wasm = bytes;
+                loadedFiles.wasmBlob = bytes;
                 checkResolved();
-            }).catch(reject);
-        }).catch(reject);
+            }).catch(catchHandler);
+        }).catch(catchHandler);
         fetch('/html5client/wasm/BBBA-mapi.js').then(function(resp) {
             resp.text().then(function(text) {
-                loadedFiles.js = text;
+                loadedFiles.wasmJS = text;
                 checkResolved();
-            }).catch(reject);
-        }).catch(reject);
+            }).catch(catchHandler);
+        }).catch(catchHandler);
+        fetch('/html5client/wasm/mapi-proc.js').then(function(resp) {
+            resp.text().then(function(text) {
+                loadedFiles.worklet = text;
+                checkResolved();
+            }).catch(catchHandler);
+        }).catch(catchHandler);
 
         console.log("---------------------------------- loadWasmProcessor end");
     });
 };
 
 export {
+    setWasmProcessorEnabled,
+    setWasmProcessorParameter,
     createWasmProcessorStream,
-    isWasmProcessingEnabled,
-    loadWasmProcessor,
+    loadWasmProcessorFiles,
 };

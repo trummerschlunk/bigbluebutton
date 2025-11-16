@@ -20,6 +20,7 @@ import {
   getAudioConstraints,
   filterSupportedConstraints,
   doGUM,
+  applyGUMConstraints,
 } from '/imports/api/audio/client/bridge/service';
 import { liveKitRoom, getLKStats } from '/imports/ui/services/livekit';
 import MediaStreamUtils from '/imports/utils/media-stream-utils';
@@ -794,10 +795,11 @@ export default class LiveKitAudioBridge extends BaseAudioBridge {
       if (IS_CHROME) {
         // @ts-ignore
         matchConstraints.deviceId = this.inputDeviceId;
+        const stream = await doGUM({ audio: matchConstraints });
+        await this.setInputStream(stream, { deviceId: this.inputDeviceId, force: true });
+      } else {
+        applyGUMConstraints(this.inputStream, matchConstraints);
       }
-
-      const stream = await doGUM({ audio: matchConstraints });
-      await this.setInputStream(stream, { deviceId: this.inputDeviceId, force: true });
     } catch (error) {
       logger.error({
         logCode: 'livekit_audio_constraint_error',

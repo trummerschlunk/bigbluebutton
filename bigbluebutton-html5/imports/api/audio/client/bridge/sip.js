@@ -20,6 +20,7 @@ import {
   getAudioConstraints,
   filterSupportedConstraints,
   doGUM,
+  applyGUMConstraints,
   stereoUnsupported,
 } from '/imports/api/audio/client/bridge/service';
 
@@ -1112,10 +1113,17 @@ class SIPSession {
 
       if (isChrome) {
         matchConstraints.deviceId = this.inputDeviceId;
-      }
 
-      const stream = await doGUM({ audio: matchConstraints });
-      this.currentSession.sessionDescriptionHandler.setLocalMediaStream(stream);
+        const stream = await doGUM({ audio: matchConstraints });
+
+        this.currentSession.sessionDescriptionHandler
+          .setLocalMediaStream(stream);
+      } else {
+        const { localMediaStream } = this.currentSession
+          .sessionDescriptionHandler;
+
+        applyGUMConstraints(localMediaStream, matchConstraints);
+      }
     } catch (error) {
       logger.error({
         logCode: 'sipjs_audio_constraint_error',

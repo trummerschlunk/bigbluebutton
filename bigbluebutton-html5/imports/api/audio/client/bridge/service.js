@@ -1,7 +1,7 @@
 import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 import logger from '/imports/startup/client/logger';
 import { getStorageSingletonInstance } from '/imports/ui/services/storage';
-import { createWasmProcessorStream, isWasmProcessingEnabled, loadWasmProcessor } from '/imports/ui/components/audio/audio-processor/service';
+import { setWasmProcessorEnabled, createWasmProcessorStream, loadWasmProcessorFiles } from '/imports/ui/components/audio/audio-processor/service';
 
 const AUDIO_SESSION_NUM_KEY = 'AudioSessionNumber';
 const DEFAULT_INPUT_DEVICE_ID = '';
@@ -113,7 +113,7 @@ const getAudioConstraints = (constraintFields = {}) => {
   );
 
   if (deviceId) {
-    matchConstraints.deviceId = { ideal: deviceId };
+    matchConstraints.deviceId = deviceId;
   }
 
   console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
@@ -122,14 +122,36 @@ const getAudioConstraints = (constraintFields = {}) => {
   return matchConstraints;
 };
 
+// check if wasm processing is enabled
+const isWasmProcessingEnabled = () => {
+  const Settings = getSettingsSingletonInstance();
+  if (typeof(Settings.application.audioWasmProcessing) !== 'undefined') {
+    return Settings.application.audioWasmProcessing;
+  }
+  if (typeof(window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing) !== 'undefined') {
+    return window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing;
+  }
+  return true;
+};
+
 const doGUM = async (constraints, retryOnFailure = false) => {
   let haveWasmProcessor;
   try {
-    await loadWasmProcessor();
+    await loadWasmProcessorFiles();
     haveWasmProcessor = true;
   } catch (error) {
     logger.warn('loadWasmProcessor failed: ' + error);
     haveWasmProcessor = false;
+  }
+  const wasmProcessingEnabled = haveWasmProcessor && isWasmProcessingEnabled();
+
+  // We want only echo-cancel on top of WASM
+  if (wasmProcessingEnabled) {
+    constraints.audio = filterSupportedConstraints({
+      echoCancellation: true,
+      autoGainControl: false,
+      noiseSuppression: false,
+    });
   }
 
   // make the constraints less exact, so it works more often
@@ -138,14 +160,7 @@ const doGUM = async (constraints, retryOnFailure = false) => {
       constraints.audio[constraint] = { ideal: constraints.audio[constraint] };
     }
   }
-
-  // We want echo-cancel on top of WASM
-  if (isWasmProcessingEnabled()) {
-    if (!constraints.audio)
-      constraints.audio = {};
-    constraints.audio.echoCancellation = { ideal: true };
-  }
-  console.log("---------------------------------- doGUM", haveWasmProcessor, constraints);
+  console.log("---------------------------------- doGUM", haveWasmProcessor, wasmProcessingEnabled, constraints);
 
   let stream;
   try {
@@ -178,11 +193,31 @@ const doGUM = async (constraints, retryOnFailure = false) => {
 
   try {
     logger.info('wasm process starting...');
-    return createWasmProcessorStream(stream);
+    const [wasmProcessorStream, wasmProcessor, audioContext] = await createWasmProcessorStream(stream);
+    setWasmProcessorEnabled(wasmProcessingEnabled);
+    return wasmProcessorStream;
   } catch (error) {
     logger.warn('createWasmProcessorStream failed: ' + error);
     return stream;
   }
+};
+
+const applyGUMConstraints = (stream, constraints) => {
+  console.log("---------------------------------- applyGUMConstraints", constraints);
+  setWasmProcessorEnabled(isWasmProcessingEnabled());
+
+  // We want only echo-cancel on top of WASM
+  if (wasmProcessingEnabled) {
+    constraints = filterSupportedConstraints({
+      echoCancellation: true,
+      autoGainControl: false,
+      noiseSuppression: false,
+    });
+  }
+
+  console.log("---------------------------------- applyGUMConstraints 2", constraints);
+  stream?.getAudioTracks().forEach((track) => track.applyConstraints(constraints));
+  console.log("---------------------------------- applyGUMConstraints ok!");
 };
 
 const isEnabled = () => window.meetingClientSettings.public.app.audioCaptions.enabled;
@@ -218,5 +253,6 @@ export {
   getStoredAudioOutputDeviceId,
   storeAudioOutputDeviceId,
   doGUM,
+  applyGUMConstraints,
   stereoUnsupported,
 };
