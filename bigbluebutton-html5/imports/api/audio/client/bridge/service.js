@@ -113,7 +113,7 @@ const getAudioConstraints = (constraintFields = {}) => {
   );
 
   if (deviceId) {
-    matchConstraints.deviceId = deviceId;
+    matchConstraints.deviceId = { exact: deviceId };
   }
 
   console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
@@ -154,12 +154,6 @@ const doGUM = async (constraints, retryOnFailure = false) => {
     });
   }
 
-  // make the constraints less exact, so it works more often
-  if (constraints.audio) {
-    for (let constraint in constraints.audio) {
-      constraints.audio[constraint] = { ideal: constraints.audio[constraint] };
-    }
-  }
   console.log("---------------------------------- doGUM", haveWasmProcessor, wasmProcessingEnabled, constraints);
 
   let stream;
@@ -202,32 +196,6 @@ const doGUM = async (constraints, retryOnFailure = false) => {
   }
 };
 
-const applyGUMConstraints = (stream, constraints) => {
-  console.log("---------------------------------- applyGUMConstraints", constraints);
-  const wasmProcessingEnabled = isWasmProcessingEnabled();
-  setWasmProcessorEnabled(wasmProcessingEnabled);
-
-  // We want only echo-cancel on top of WASM
-  if (wasmProcessingEnabled) {
-    constraints = filterSupportedConstraints({
-      echoCancellation: true,
-      autoGainControl: false,
-      noiseSuppression: false,
-    });
-  }
-
-  // make the constraints less exact, so it works more often
-  for (let constraint in constraints) {
-    constraints[constraint] = { ideal: constraints[constraint] };
-  }
-
-  console.log("---------------------------------- applyGUMConstraints fixed", constraints);
-
-  stream?.getAudioTracks().forEach((track) => track.applyConstraints(constraints).then(() => {
-    console.log("---------------------------------- applyGUMConstraints ok!");
-  }));
-};
-
 const isEnabled = () => window.meetingClientSettings.public.app.audioCaptions.enabled;
 
 const getProvider = () => window.meetingClientSettings.public.app.audioCaptions.provider;
@@ -261,6 +229,5 @@ export {
   getStoredAudioOutputDeviceId,
   storeAudioOutputDeviceId,
   doGUM,
-  applyGUMConstraints,
   stereoUnsupported,
 };
