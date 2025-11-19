@@ -113,7 +113,7 @@ const getAudioConstraints = (constraintFields = {}) => {
   );
 
   if (deviceId) {
-    matchConstraints.deviceId = { exact: deviceId };
+    matchConstraints.deviceId = { ideal: deviceId };
   }
 
   console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
