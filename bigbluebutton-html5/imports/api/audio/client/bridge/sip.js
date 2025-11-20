@@ -22,6 +22,7 @@ import {
   doGUM,
   stereoUnsupported,
 } from '/imports/api/audio/client/bridge/service';
+import { isWasmProcessorSupported } from '/imports/ui/components/audio/audio-processor/service';
 
 const CALL_CONNECT_TIMEOUT = 20000;
 const ICE_NEGOTIATION_TIMEOUT = 20000;
@@ -1106,12 +1107,25 @@ class SIPSession {
       }, 'SIP.js updating audio constraint');
 
       const matchConstraints = filterSupportedConstraints(constraints);
-      matchConstraints.deviceId = this.inputDeviceId;
 
-      const stream = await doGUM({ audio: matchConstraints });
+      //Chromium bug - see: https://bugs.chromium.org/p/chromium/issues/detail?id=796964&q=applyConstraints&can=2
+      const { isChrome } = browserInfo;
 
-      this.currentSession.sessionDescriptionHandler
-        .setLocalMediaStream(stream);
+      if (isChrome || isWasmProcessorSupported()) {
+        matchConstraints.deviceId = this.inputDeviceId;
+
+        const stream = await doGUM({ audio: matchConstraints });
+
+        this.currentSession.sessionDescriptionHandler
+          .setLocalMediaStream(stream);
+      } else {
+        const { localMediaStream } = this.currentSession
+          .sessionDescriptionHandler;
+
+        localMediaStream.getAudioTracks().forEach(
+          track => track.applyConstraints(matchConstraints),
+        );
+      }
     } catch (error) {
       logger.error({
         logCode: 'sipjs_audio_constraint_error',

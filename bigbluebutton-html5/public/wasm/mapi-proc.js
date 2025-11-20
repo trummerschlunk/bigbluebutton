@@ -20,8 +20,6 @@ const createWasmOpts = (wasmBlob, postRunCallback) => {
                 }
 
                 successCallback(output.instance, output.module);
-            }).catch(error => {
-                console.log('Failed to instantiate:', error);
             });
 
             return {};
@@ -120,7 +118,6 @@ class MapiWorkletProcessor extends AudioWorkletProcessor {
         }
 
         this.bbba.enabled = !!data.enable;
-        console.log('BBBA status changed:', this.bbba.enabled);
     }
 
     param(data) {

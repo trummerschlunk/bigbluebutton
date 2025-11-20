@@ -14,18 +14,8 @@ const loadedFiles = {
 // global audio processor so we can communicate with it
 let audioProcessor = null;
 
-// global functions for testing purposes
-const setWasmProcessorEnabled = (enabled) => {
-    if (audioProcessor) {
-        audioProcessor.port.postMessage({type: 'enable', enable: enabled});
-    }
-};
-
-const setWasmProcessorParameter = (index, value) => {
-    if (audioProcessor) {
-        audioProcessor.port.postMessage({type: 'param', index: index, value: value});
-    }
-};
+// check if wasm processor is supported, assigned to undefined if not checked yet
+let wasmProcessorUnsupportedError = undefined;
 
 // create an audio processor on top of a stream, trigger Promise resolve with a processed stream
 const createWasmProcessorStream = (stream) => {
@@ -41,15 +31,12 @@ const createWasmProcessorStream = (stream) => {
 
         // function to load audio worklet, called once audio context is running
         const loadAudioWorklet = async () => {
-            console.log("---------------------------------------------------------------- loadAudioWorklet start");
             const processorBlob = new Blob([loadedFiles.worklet], { type: 'text/javascript' });
             const processorURL = URL.createObjectURL(processorBlob);
 
             audioContext.audioWorklet.addModule(processorURL).then(() => {
-                console.log("---------------------------------------------------------------- loadAudioWorklet module loaded");
                 const contextSource = audioContext.createMediaStreamSource(stream);
                 const contextDestination = audioContext.createMediaStreamDestination();
-                console.log("---------------------------------------------------------------- loadAudioWorklet streams created");
 
                 // FIXME can't force mono?
                 const audioProcessorOptions = {
@@ -58,29 +45,25 @@ const createWasmProcessorStream = (stream) => {
                     channels: 1,
                 };
                 audioProcessor = new AudioWorkletNode(audioContext, 'mapi-proc', audioProcessorOptions);
-                console.log("---------------------------------------------------------------- loadAudioWorklet audioProcessor created");
                 audioProcessor.port.onmessage = event => {
                     if (event.data?.type == 'loaded') {
-                        console.log("audioProcessor has been loaded, triggering callback now");
-                        resolve([contextDestination.stream, audioProcessor, audioContext]);
+                        resolve(contextDestination.stream);
                     }
                 };
                 audioProcessor.port.postMessage({ type: 'init', wasm: loadedFiles.wasmBlob, js: loadedFiles.wasmJS });
-                console.log("---------------------------------------------------------------- loadAudioWorklet init called");
 
                 contextSource.connect(audioProcessor);
                 audioProcessor.connect(contextDestination);
-
-                console.log("---------------------------------------------------------------- loadAudioWorklet ok!");
             }).catch(reject);
         };
 
+        // Firefox allows to resume right away, while Chrome does not
+        // handle both cases here
         audioContext.resume().then(loadAudioWorklet).catch((err) => {
-            // chrome does not allow to load worklet while audio context is suspended
+            // Chrome does not allow to load worklet while audio context is suspended
             // resuming audio context requires user interaction
             if (audioContext.state === 'suspended') {
                 const resume = () => {
-                    console.log("---------------------------------- clicked document, trying to resume audio context");
                     audioContext.resume().then(loadAudioWorklet).catch(reject);
                     document.removeEventListener('click', resume);
                 };
@@ -92,24 +75,36 @@ const createWasmProcessorStream = (stream) => {
     });
 };
 
+const isWasmProcessorSupported = () => {
+    if (typeof wasmProcessorUnsupportedError !== 'undefined')
+        return !wasmProcessorUnsupportedError;
+
+    if (typeof AudioContext === 'undefined') {
+        wasmProcessorUnsupportedError = 'AudioContext unsupported';
+        return false;
+    }
+    if (typeof WebAssembly === 'undefined') {
+        wasmProcessorUnsupportedError = 'WebAssembly unsupported';
+        return false;
+    }
+    if (! WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,2,8,1,1,97,1,98,3,127,1,6,6,1,127,1,65,0,11,7,5,1,1,97,3,1]))) {
+        wasmProcessorUnsupportedError = 'Importable/Exportable mutable globals unsupported';
+        return false;
+    }
+
+    wasmProcessorUnsupportedError = '';
+    return true;
+};
+
 // load processor files, trigger Promise resolve when all done
 const loadWasmProcessorFiles = () => {
     return new Promise((resolve, reject) => {
-        // early checks
-        if (typeof(AudioContext) === 'undefined') {
-            reject('AudioContext unsupported');
-            return;
-        }
-        if (typeof(WebAssembly) === 'undefined') {
-            reject('WebAssembly unsupported');
-            return;
-        }
-        if (! WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,2,8,1,1,97,1,98,3,127,1,6,6,1,127,1,65,0,11,7,5,1,1,97,3,1]))) {
-            reject('Importable/Exportable mutable globals unsupported');
+        // early check
+        if (! isWasmProcessorSupported()) {
+            reject(wasmProcessorUnsupportedError);
             return;
         }
 
-        console.log("---------------------------------- loadWasmProcessor start");
         const checkResolved = () => {
             if (loadedFiles.wasmBlob && loadedFiles.wasmJS && loadedFiles.worklet) {
                 resolve(true);
@@ -133,38 +128,54 @@ const loadWasmProcessorFiles = () => {
         loadedFiles.error = null;
 
         // return early if already loaded before
-        if (checkResolved()) {
-            console.log("---------------------------------- loadWasmProcessor end early");
+        if (checkResolved())
             return;
-        }
+
+        // check if SIMD is supported, needed for old Safari versions
+        const supportsSIMD = WebAssembly.validate(
+            new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]));
 
         // load wasm files and worklet
-        fetch('/html5client/wasm/BBBA-mapi.wasm').then(function(resp) {
+        const basepath = '/html5client/wasm/';
+        const suffix = supportsSIMD ? '' : '-nosimd';
+        fetch(basepath + 'BBBA-mapi' + suffix + '.wasm').then(function(resp) {
             resp.arrayBuffer().then(function(bytes) {
                 loadedFiles.wasmBlob = bytes;
                 checkResolved();
             }).catch(catchHandler);
         }).catch(catchHandler);
-        fetch('/html5client/wasm/BBBA-mapi.js').then(function(resp) {
+        fetch(basepath + 'BBBA-mapi' + suffix + '.js').then(function(resp) {
             resp.text().then(function(text) {
                 loadedFiles.wasmJS = text;
                 checkResolved();
             }).catch(catchHandler);
         }).catch(catchHandler);
-        fetch('/html5client/wasm/mapi-proc.js').then(function(resp) {
+        fetch(basepath + 'mapi-proc.js').then(function(resp) {
             resp.text().then(function(text) {
                 loadedFiles.worklet = text;
                 checkResolved();
             }).catch(catchHandler);
         }).catch(catchHandler);
-
-        console.log("---------------------------------- loadWasmProcessor end");
     });
 };
 
+// run-time changes to wasm processor
+const setWasmProcessorEnabled = (enabled) => {
+    if (audioProcessor) {
+        audioProcessor.port.postMessage({type: 'enable', enable: enabled});
+    }
+};
+
+const setWasmProcessorParameter = (index, value) => {
+    if (audioProcessor) {
+        audioProcessor.port.postMessage({type: 'param', index: index, value: value});
+    }
+};
+
 export {
+    createWasmProcessorStream,
+    isWasmProcessorSupported,
+    loadWasmProcessorFiles,
     setWasmProcessorEnabled,
     setWasmProcessorParameter,
-    createWasmProcessorStream,
-    loadWasmProcessorFiles,
 };

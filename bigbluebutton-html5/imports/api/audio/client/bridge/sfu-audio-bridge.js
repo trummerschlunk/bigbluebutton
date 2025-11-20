@@ -16,6 +16,7 @@ import {
   doGUM,
 } from '/imports/api/audio/client/bridge/service';
 import { shouldForceRelay } from '/imports/ui/services/bbb-webrtc-sfu/utils';
+import { isWasmProcessorSupported } from '/imports/ui/components/audio/audio-processor/service';
 
 const SENDRECV_ROLE = 'sendrecv';
 const RECV_ROLE = 'recv';
@@ -473,9 +474,14 @@ export default class SFUAudioBridge extends BaseAudioBridge {
 
       const matchConstraints = filterSupportedConstraints(constraints);
 
-      matchConstraints.deviceId = this.inputDeviceId;
-      const stream = await doGUM({ audio: matchConstraints });
-      await this.setInputStream(stream);
+      if (IS_CHROME || isWasmProcessorSupported()) {
+        matchConstraints.deviceId = this.inputDeviceId;
+        const stream = await doGUM({ audio: matchConstraints });
+        await this.setInputStream(stream);
+      } else {
+        this.inputStream.getAudioTracks()
+          .forEach((track) => track.applyConstraints(matchConstraints));
+      }
     } catch (error) {
       logger.error({
         logCode: 'sfuaudio_audio_constraint_error',

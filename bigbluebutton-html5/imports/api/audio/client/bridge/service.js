@@ -1,7 +1,12 @@
 import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 import logger from '/imports/startup/client/logger';
 import { getStorageSingletonInstance } from '/imports/ui/services/storage';
-import { setWasmProcessorEnabled, createWasmProcessorStream, loadWasmProcessorFiles } from '/imports/ui/components/audio/audio-processor/service';
+import {
+  createWasmProcessorStream,
+  isWasmProcessorSupported,
+  loadWasmProcessorFiles,
+  setWasmProcessorEnabled,
+} from '/imports/ui/components/audio/audio-processor/service';
 
 const AUDIO_SESSION_NUM_KEY = 'AudioSessionNumber';
 const DEFAULT_INPUT_DEVICE_ID = '';
@@ -113,35 +118,33 @@ const getAudioConstraints = (constraintFields = {}) => {
   );
 
   if (deviceId) {
+    // NOTE using 'exact' here causes OverconstrainedError for systems with dynamic device ids like PipeWire
+    // prefer to use 'ideal' which can fallback to default device, allowing to keep constraints
     matchConstraints.deviceId = { ideal: deviceId };
   }
 
-  console.log("---------------------------------- userSettingsConstraints", userSettingsConstraints);
-  console.log("---------------------------------- audioDeviceConstraints", audioDeviceConstraints);
-  console.log("---------------------------------- matchConstraints", matchConstraints);
   return matchConstraints;
 };
 
 // check if wasm processing is enabled
 const isWasmProcessingEnabled = () => {
   const Settings = getSettingsSingletonInstance();
-  if (typeof(Settings.application.audioWasmProcessing) !== 'undefined') {
+  if (typeof Settings.application.audioWasmProcessing !== 'undefined')
     return Settings.application.audioWasmProcessing;
-  }
-  if (typeof(window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing) !== 'undefined') {
+  if (typeof window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing !== 'undefined')
     return window.meetingClientSettings.public.app.defaultSettings.application.audioWasmProcessing;
-  }
   return true;
 };
 
 const doGUM = async (constraints, retryOnFailure = false) => {
-  let haveWasmProcessor;
-  try {
-    await loadWasmProcessorFiles();
-    haveWasmProcessor = true;
-  } catch (error) {
-    logger.warn('loadWasmProcessor failed: ' + error);
-    haveWasmProcessor = false;
+  let haveWasmProcessor = false;
+  if (isWasmProcessorSupported()) {
+    try {
+      await loadWasmProcessorFiles();
+      haveWasmProcessor = true;
+    } catch (error) {
+      logger.warn('loadWasmProcessorFiles failed: ' + error);
+    }
   }
   const wasmProcessingEnabled = haveWasmProcessor && isWasmProcessingEnabled();
 
@@ -153,8 +156,6 @@ const doGUM = async (constraints, retryOnFailure = false) => {
       noiseSuppression: false,
     });
   }
-
-  console.log("---------------------------------- doGUM", haveWasmProcessor, wasmProcessingEnabled, constraints);
 
   let stream;
   try {
@@ -186,8 +187,7 @@ const doGUM = async (constraints, retryOnFailure = false) => {
   }
 
   try {
-    logger.info('wasm process starting...');
-    const [wasmProcessorStream, wasmProcessor, audioContext] = await createWasmProcessorStream(stream);
+    const wasmProcessorStream = await createWasmProcessorStream(stream);
     setWasmProcessorEnabled(wasmProcessingEnabled);
     return wasmProcessorStream;
   } catch (error) {

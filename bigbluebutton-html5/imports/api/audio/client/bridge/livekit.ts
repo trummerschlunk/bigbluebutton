@@ -23,9 +23,11 @@ import {
 } from '/imports/api/audio/client/bridge/service';
 import { liveKitRoom, getLKStats } from '/imports/ui/services/livekit';
 import MediaStreamUtils from '/imports/utils/media-stream-utils';
+import { isWasmProcessorSupported } from '/imports/ui/components/audio/audio-processor/service';
 
 const BRIDGE_NAME = 'livekit';
 const SENDRECV_ROLE = 'sendrecv';
+const IS_CHROME = browserInfo.isChrome;
 const ROOM_CONNECTION_TIMEOUT = 15000;
 
 interface JoinOptions {
@@ -790,10 +792,15 @@ export default class LiveKitAudioBridge extends BaseAudioBridge {
 
       const matchConstraints = filterSupportedConstraints(constraints);
 
-      // @ts-ignore
-      matchConstraints.deviceId = this.inputDeviceId;
-      const stream = await doGUM({ audio: matchConstraints });
-      await this.setInputStream(stream, { deviceId: this.inputDeviceId, force: true });
+      if (IS_CHROME || isWasmProcessorSupported()) {
+        // @ts-ignore
+        matchConstraints.deviceId = this.inputDeviceId;
+        const stream = await doGUM({ audio: matchConstraints });
+        await this.setInputStream(stream, { deviceId: this.inputDeviceId, force: true });
+      } else {
+        this.inputStream?.getAudioTracks()
+          .forEach((track) => track.applyConstraints(matchConstraints));
+      }
     } catch (error) {
       logger.error({
         logCode: 'livekit_audio_constraint_error',
